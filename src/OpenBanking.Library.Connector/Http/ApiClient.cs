@@ -9,10 +9,12 @@ using System.Net.Security;
 using System.Runtime.InteropServices;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
+using FinnovationLabs.OpenBanking.Library.Connector.Fluent;
 using FinnovationLabs.OpenBanking.Library.Connector.Instrumentation;
 using FinnovationLabs.OpenBanking.Library.Connector.Metrics;
 using Microsoft.Extensions.Http.Logging;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace FinnovationLabs.OpenBanking.Library.Connector.Http;
 
@@ -67,7 +69,8 @@ public class ApiClient(
         HttpRequestMessage request,
         string? requestContentForLog,
         TppReportingRequestInfo? tppReportingRequestInfo,
-        JsonSerializerSettings? jsonSerializerSettings)
+        JsonSerializerSettings? jsonSerializerSettings,
+        bool exposeSuccessResponseBodyInError)
         where T : class
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -91,11 +94,12 @@ public class ApiClient(
         {
             throw new ExternalApiResponseDeserialisationException(
                 statusCode,
-                $"{request.Method}",
-                $"{request.RequestUri}",
+                request.Method.ToString(),
+                request.RequestUri!.ToString(),
                 responseBody,
                 xFapiInteractionId,
-                ex.Message);
+                ex.Message,
+                exposeSuccessResponseBodyInError);
         }
 
         if (responseBodyTyped is null)
@@ -113,7 +117,7 @@ public class ApiClient(
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        (int statusCode, string? responseBody, string? xFapiInteractionId) =
+        (_, string? responseBody, _) =
             await SendInnerAsync(request, requestContentForLog, tppReportingRequestInfo);
 
         // Check body null
@@ -130,7 +134,7 @@ public class ApiClient(
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        (int statusCode, string? responseBody, string? xFapiInteractionId) =
+        (_, string? responseBody, _) =
             await SendInnerAsync(request, requestContentForLog, tppReportingRequestInfo);
 
         // Check body not null
@@ -215,13 +219,12 @@ public class ApiClient(
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        // Make request and retrieve response body.
-        // Since logging requires request and response body, done at this level rather than in wrapping  DelegatingHandler as previously intended.
+        // Since logging requires request and response body, done at this level rather than in wrapping DelegatingHandler as previously intended.
         _httpRequestLogger.LogRequestStart(request);
+        var requestMethod = request.Method.ToString();
+        var requestUri = request.RequestUri!.ToString();
         HttpResponseMessage? response = null;
-        string? responseBody = null;
-        var stopWatch = new Stopwatch();
-        stopWatch.Start();
+        var stopWatch = Stopwatch.StartNew();
         try
         {
             // Make request
@@ -229,88 +232,143 @@ public class ApiClient(
                 request,
                 HttpCompletionOption.ResponseContentRead,
                 CancellationToken.None);
-            stopWatch.Stop();
-
-            // Get request and response bodies
-            responseBody = await response.Content.ReadAsStringAsync();
-
-            // Log request
-            _httpRequestLogger.LogRequestStop(
-                new HttpRequestLoggerAdditionalData
-                {
-                    RequestBody = requestContentForLog,
-                    ResponseBody = responseBody
-                },
-                request,
-                response,
-                stopWatch.Elapsed);
         }
         catch (Exception ex)
         {
-            stopWatch.Stop(); // no-op if not required
+            stopWatch.Stop();
 
-            // Update TPP reporting metric
-            if (tppReportingRequestInfo is not null) // removed ex is TaskCanceledException { InnerException: TimeoutException })
-            {
-                if (response is null)
-                {
-                    tppReportingMetrics?.RequestNoResponseCount.Add(
-                        1,
-                        new KeyValuePair<string, object?>("bank_profile", tppReportingRequestInfo.BankProfile),
-                        new KeyValuePair<string, object?>(
-                            "external_api_endpoint",
-                            tppReportingRequestInfo.EndpointDescription));
-                }
-                else
-                {
-                    UpdateTppReportingMetrics(tppReportingRequestInfo, (int) response.StatusCode);
-                }
-            }
-
-            // Log request
-            _httpRequestLogger.LogRequestFailed(
-                new HttpRequestLoggerAdditionalData
-                {
-                    RequestBody = requestContentForLog,
-                    ResponseBody = responseBody
-                },
+            LogAndUpdateMetricsForFailure(
                 request,
-                response,
+                requestContentForLog,
+                tppReportingRequestInfo,
+                null,
                 ex,
                 stopWatch.Elapsed);
+
+            if (ex is HttpIOException httpIoException)
+            {
+                throw new HttpResponseException(
+                    new ExternalApiHttpRequestIoError(requestMethod, requestUri, httpIoException.HttpRequestError));
+            }
+
+            if (ex is TaskCanceledException { InnerException: TimeoutException })
+            {
+                throw new HttpResponseException(new ExternalApiHttpRequestTimeout(requestMethod, requestUri));
+            }
+
             throw;
         }
-        finally
-        {
-            response?.Dispose();
-        }
 
-        // Update TPP reporting metric
-        if (tppReportingRequestInfo is not null)
-        {
-            UpdateTppReportingMetrics(tppReportingRequestInfo, (int) response.StatusCode);
-        }
+        stopWatch.Stop();
 
-        // Get selected response headers
+        // Process response
         string? xFapiInteractionId = null;
         if (response.Headers.TryGetValues("x-fapi-interaction-id", out IEnumerable<string>? values))
         {
             xFapiInteractionId = values.First();
         }
-
-        // Check HTTP status code
         var statusCode = (int) response.StatusCode;
-        if (!response.IsSuccessStatusCode)
+        bool isSuccess = response.IsSuccessStatusCode;
+        string? responseBody;
+        try
         {
-            throw new ExternalApiHttpErrorException(
-                statusCode,
-                $"{request.Method}",
-                $"{request.RequestUri}",
-                responseBody,
-                xFapiInteractionId);
+            // Read response body (buffered in memory by ResponseContentRead above)
+            responseBody = await response.Content.ReadAsStringAsync();
+        }
+        catch (Exception ex)
+        {
+            LogAndUpdateMetricsForFailure(
+                request,
+                requestContentForLog,
+                tppReportingRequestInfo,
+                response,
+                ex,
+                stopWatch.Elapsed);
+            response.Dispose();
+            throw;
+        }
+
+        // Log request
+        _httpRequestLogger.LogRequestStop(
+            new HttpRequestLoggerAdditionalData
+            {
+                RequestBody = requestContentForLog,
+                ResponseBody = responseBody
+            },
+            request,
+            response,
+            stopWatch.Elapsed);
+
+        // Update TPP reporting metric
+        if (tppReportingRequestInfo is not null)
+        {
+            UpdateTppReportingMetrics(tppReportingRequestInfo, statusCode);
+        }
+
+        response.Dispose();
+
+        if (!isSuccess)
+        {
+            // Try to parse response body as JSON
+            object parsedResponseBody;
+            try
+            {
+                parsedResponseBody = JToken.Parse(responseBody);
+            }
+            catch (JsonException)
+            {
+                parsedResponseBody = responseBody;
+            }
+
+            throw new HttpResponseException(
+                new ExternalApiHttpRequestFailure(
+                    requestMethod,
+                    requestUri,
+                    statusCode,
+                    parsedResponseBody,
+                    xFapiInteractionId));
         }
 
         return (statusCode, responseBody, xFapiInteractionId);
+    }
+
+    private void LogAndUpdateMetricsForFailure(
+        HttpRequestMessage request,
+        string? requestContentForLog,
+        TppReportingRequestInfo? tppReportingRequestInfo,
+        HttpResponseMessage? response,
+        Exception ex,
+        TimeSpan elapsed)
+    {
+        // Update TPP reporting metric
+        if (tppReportingRequestInfo is not null)
+        {
+            if (response is null)
+            {
+                tppReportingMetrics?.RequestNoResponseCount.Add(
+                    1,
+                    new KeyValuePair<string, object?>("bank_profile", tppReportingRequestInfo.BankProfile),
+                    new KeyValuePair<string, object?>(
+                        "external_api_endpoint",
+                        tppReportingRequestInfo.EndpointDescription));
+            }
+            else
+            {
+                UpdateTppReportingMetrics(tppReportingRequestInfo, (int) response.StatusCode);
+            }
+        }
+
+        // Log request
+        _httpRequestLogger.LogRequestFailed(
+            new HttpRequestLoggerAdditionalData
+            {
+                RequestBody = requestContentForLog,
+                ResponseBody = null
+            },
+            request,
+            response,
+            ex,
+            elapsed);
     }
 
     private void UpdateTppReportingMetrics(
@@ -353,15 +411,5 @@ public class ApiClient(
 
             throw;
         }
-    }
-
-    private static async Task<string?> GetStringRequestBodyAsync(HttpRequestMessage request)
-    {
-        using HttpContent? content = request.Content;
-        if (content is null)
-        {
-            return null;
-        }
-        return await content.ReadAsStringAsync();
     }
 }

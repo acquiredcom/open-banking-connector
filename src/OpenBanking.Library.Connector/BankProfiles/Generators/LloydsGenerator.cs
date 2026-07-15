@@ -85,11 +85,13 @@ public class LloydsGenerator : BankProfileGeneratorBase<LloydsBank>
                 BaseUrl = GetPaymentsApiBaseUrl(bank, true)
             },
             new VariableRecurringPaymentsApi { BaseUrl = GetPaymentsApiBaseUrl(bank, false) },
-            new VariableRecurringPaymentsApi
-            {
-                ApiVersion = VariableRecurringPaymentsApiVersion.Version4p0,
-                BaseUrl = GetPaymentsApiBaseUrl(bank, true)
-            },
+            bank is not LloydsBank.MbnaPersonal
+                ? new VariableRecurringPaymentsApi
+                {
+                    ApiVersion = VariableRecurringPaymentsApiVersion.Version4p0,
+                    BaseUrl = GetPaymentsApiBaseUrl(bank, true)
+                }
+                : null,
             bank is not LloydsBank.Sandbox,
             instrumentationClient)
         {
@@ -135,6 +137,9 @@ public class LloydsGenerator : BankProfileGeneratorBase<LloydsBank>
                         OAuth2ResponseMode.Fragment
                     }
                 },
+                BaseIdTokenProcessingCustomBehaviour = bank is LloydsBank.Sandbox
+                    ? new IdTokenProcessingCustomBehaviour { IdTokenSubClaimType = IdTokenSubClaimType.EndUserId }
+                    : null,
                 AccountAccessConsentAuthGet = bank is LloydsBank.Sandbox
                     ? null
                     : new ConsentAuthGetCustomBehaviour { AddRedundantOAuth2NonceRequestParameter = true },
@@ -226,9 +231,7 @@ public class LloydsGenerator : BankProfileGeneratorBase<LloydsBank>
             {
                 UseRegistrationDeleteEndpoint = true,
                 UseRegistrationGetEndpoint = true,
-                UseRegistrationAccessToken = bank is LloydsBank.Sandbox,
-                IdTokenSubClaimType =
-                    bank is LloydsBank.Sandbox ? IdTokenSubClaimType.EndUserId : IdTokenSubClaimType.ConsentId
+                UseRegistrationAccessToken = bank is LloydsBank.Sandbox
             },
             AccountAndTransactionApiSettings = new AccountAndTransactionApiSettings
             {
@@ -246,19 +249,6 @@ public class LloydsGenerator : BankProfileGeneratorBase<LloydsBank>
 
                     return externalApiRequest;
                 }
-            },
-            AspspBrandId = bank switch
-            {
-                LloydsBank.Sandbox => 10004, // sandbox
-                LloydsBank.LloydsPersonal
-                    or LloydsBank.LloydsBusiness
-                    or LloydsBank.LloydsCommerical => 10,
-                LloydsBank.HalifaxPersonal => 8,
-                LloydsBank.BankOfScotlandPersonal
-                    or LloydsBank.BankOfScotlandBusiness
-                    or LloydsBank.BankOfScotlandCommerical => 4,
-                LloydsBank.MbnaPersonal => 18,
-                _ => throw new ArgumentOutOfRangeException(nameof(bank), bank, null)
             },
             AispUseV4ByDefault = true,
             PispUseV4ByDefault = true,

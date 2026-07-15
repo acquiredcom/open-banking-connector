@@ -41,8 +41,7 @@ public class ChaseGenerator : BankProfileGeneratorBase<ChaseBank>
             BankConfigurationApiSettings = new BankConfigurationApiSettings
             {
                 UseRegistrationEndpoint = false,
-                TokenEndpointAuthMethod = TokenEndpointAuthMethodSupportedValues.PrivateKeyJwt,
-                IdTokenSubClaimType = IdTokenSubClaimType.EndUserId
+                TokenEndpointAuthMethod = TokenEndpointAuthMethodSupportedValues.PrivateKeyJwt
             },
             AccountAndTransactionApiSettings = new AccountAndTransactionApiSettings
             {
@@ -78,6 +77,8 @@ public class ChaseGenerator : BankProfileGeneratorBase<ChaseBank>
             },
             CustomBehaviour = new CustomBehaviourClass
             {
+                BaseIdTokenProcessingCustomBehaviour =
+                    new IdTokenProcessingCustomBehaviour { IdTokenSubClaimType = IdTokenSubClaimType.EndUserId },
                 AccountAccessConsentAuthCodeGrantPost =
                     new AuthCodeGrantPostCustomBehaviour { ResponseScopeMayIncludeExtraValues = true },
                 AccountAccessConsentRefreshTokenGrantPost =
@@ -95,8 +96,7 @@ public class ChaseGenerator : BankProfileGeneratorBase<ChaseBank>
                     ResponseDataRefundMayBeMissingOrWrong = true
                 },
                 ClientCredentialsGrantPost = new ClientCredentialsGrantPostCustomBehaviour()
-            },
-            AspspBrandId = 0
+            }
         };
 
     private static string GetApiBaseUrl(string suffix) =>

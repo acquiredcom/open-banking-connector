@@ -106,13 +106,11 @@ public class NatWestGenerator : BankProfileGeneratorBase<NatWestBank>
             bank is NatWestBank.Coutts
                 ? null
                 : new VariableRecurringPaymentsApi { BaseUrl = GetPaymentsBaseUrl(bank, "v3.1") },
-            bank is NatWestBank.Coutts
-                ? null
-                : new VariableRecurringPaymentsApi
-                {
-                    BaseUrl = GetPaymentsBaseUrl(bank, "v4.0"),
-                    ApiVersion = VariableRecurringPaymentsApiVersion.Version4p0
-                },
+            new VariableRecurringPaymentsApi
+            {
+                BaseUrl = GetPaymentsBaseUrl(bank, "v4.0"),
+                ApiVersion = VariableRecurringPaymentsApiVersion.Version4p0
+            },
             bank is not (NatWestBank.NatWestSandbox or NatWestBank.RoyalBankOfScotlandSandbox),
             instrumentationClient)
         {
@@ -122,9 +120,7 @@ public class NatWestGenerator : BankProfileGeneratorBase<NatWestBank>
                 {
                     NatWestBank.Mettle => TokenEndpointAuthMethodSupportedValues.TlsClientAuth,
                     _ => TokenEndpointAuthMethodSupportedValues.PrivateKeyJwt
-                },
-                IdTokenSubClaimType =
-                    bank is NatWestBank.Coutts ? IdTokenSubClaimType.EndUserId : IdTokenSubClaimType.ConsentId
+                }
             },
             AccountAndTransactionApiSettings = new AccountAndTransactionApiSettings
             {
@@ -160,6 +156,9 @@ public class NatWestGenerator : BankProfileGeneratorBase<NatWestBank>
             },
             CustomBehaviour = new CustomBehaviourClass
             {
+                BaseIdTokenProcessingCustomBehaviour = bank is NatWestBank.Coutts
+                    ? new IdTokenProcessingCustomBehaviour { IdTokenSubClaimType = IdTokenSubClaimType.EndUserId }
+                    : null,
                 BankRegistrationPost = new BankRegistrationPostCustomBehaviour
                 {
                     TransportCertificateSubjectDnOrgIdEncoding = bank switch
@@ -176,15 +175,28 @@ public class NatWestGenerator : BankProfileGeneratorBase<NatWestBank>
                 {
                     AudClaim = GetAudClaim(bank),
                     IdTokenProcessingCustomBehaviour =
-                        new IdTokenProcessingCustomBehaviour { DoNotValidateIdTokenAcrClaim = true }
+                        new IdTokenProcessingCustomBehaviour
+                        {
+                            DoNotValidateIdTokenAcrClaim = true,
+                            IssClaim = GetAudClaim(bank)
+                        }
                 },
                 AccountAccessConsentAuthCodeGrantPost = new AuthCodeGrantPostCustomBehaviour
                 {
                     IdTokenProcessingCustomBehaviour =
-                        new IdTokenProcessingCustomBehaviour { DoNotValidateIdTokenAcrClaim = true }
+                        new IdTokenProcessingCustomBehaviour
+                        {
+                            DoNotValidateIdTokenAcrClaim = true,
+                            IssClaim = GetAudClaim(bank)
+                        }
                 },
                 AccountAccessConsentRefreshTokenGrantPost =
-                    new RefreshTokenGrantPostCustomBehaviour { IdTokenMayBeAbsent = true },
+                    new RefreshTokenGrantPostCustomBehaviour
+                    {
+                        IdTokenMayBeAbsent = true,
+                        IdTokenProcessingCustomBehaviour =
+                            new IdTokenProcessingCustomBehaviour { IssClaim = GetAudClaim(bank) }
+                    },
                 AccountAccessConsentPost = bank is NatWestBank.Coutts
                     ? new ReadWritePostCustomBehaviour { ResponseLinksMayAddSlash = true }
                     : null,
@@ -219,35 +231,61 @@ public class NatWestGenerator : BankProfileGeneratorBase<NatWestBank>
                 {
                     AudClaim = GetAudClaim(bank),
                     IdTokenProcessingCustomBehaviour =
-                        new IdTokenProcessingCustomBehaviour { DoNotValidateIdTokenAcrClaim = true }
+                        new IdTokenProcessingCustomBehaviour
+                        {
+                            DoNotValidateIdTokenAcrClaim = true,
+                            IssClaim = GetAudClaim(bank)
+                        }
                 },
                 DomesticPaymentConsentAuthCodeGrantPost = new AuthCodeGrantPostCustomBehaviour
                 {
                     IdTokenProcessingCustomBehaviour =
-                        new IdTokenProcessingCustomBehaviour { DoNotValidateIdTokenAcrClaim = true }
+                        new IdTokenProcessingCustomBehaviour
+                        {
+                            DoNotValidateIdTokenAcrClaim = true,
+                            IssClaim = GetAudClaim(bank)
+                        }
                 },
                 DomesticPaymentConsentRefreshTokenGrantPost =
-                    new RefreshTokenGrantPostCustomBehaviour { IdTokenMayBeAbsent = true },
+                    new RefreshTokenGrantPostCustomBehaviour
+                    {
+                        IdTokenMayBeAbsent = true,
+                        IdTokenProcessingCustomBehaviour =
+                            new IdTokenProcessingCustomBehaviour { IssClaim = GetAudClaim(bank) }
+                    },
                 DomesticVrpConsentAuthGet = new ConsentAuthGetCustomBehaviour
                 {
                     AudClaim = GetAudClaim(bank),
                     IdTokenProcessingCustomBehaviour =
-                        new IdTokenProcessingCustomBehaviour { DoNotValidateIdTokenAcrClaim = true }
+                        new IdTokenProcessingCustomBehaviour
+                        {
+                            DoNotValidateIdTokenAcrClaim = true,
+                            IssClaim = GetAudClaim(bank)
+                        }
                 },
                 DomesticVrpConsentAuthCodeGrantPost = new AuthCodeGrantPostCustomBehaviour
                 {
                     IdTokenProcessingCustomBehaviour =
-                        new IdTokenProcessingCustomBehaviour { DoNotValidateIdTokenAcrClaim = true }
+                        new IdTokenProcessingCustomBehaviour
+                        {
+                            DoNotValidateIdTokenAcrClaim = true,
+                            IssClaim = GetAudClaim(bank)
+                        }
                 },
                 DomesticVrpConsentRefreshTokenGrantPost =
-                    new RefreshTokenGrantPostCustomBehaviour { IdTokenMayBeAbsent = true },
+                    new RefreshTokenGrantPostCustomBehaviour
+                    {
+                        IdTokenMayBeAbsent = true,
+                        IdTokenProcessingCustomBehaviour =
+                            new IdTokenProcessingCustomBehaviour { IssClaim = GetAudClaim(bank) }
+                    },
                 DomesticPaymentConsent =
                     new DomesticPaymentConsentCustomBehaviour
                     {
                         PreferMisspeltContractPresentIndicator = true,
                         ResponseDataFundsAvailableResultFundsAvailableMayBeWrong =
                             bank is NatWestBank.NatWestSandbox or NatWestBank.RoyalBankOfScotlandSandbox,
-                        ResponseLinksMayAddSlash = bank is NatWestBank.Coutts,
+                        ResponseLinksMayHaveIncorrectUrlBeforeQuery = bank is NatWestBank.Coutts,
                         ResponseRiskContractPresentIndicatorMayBeMissingOrWrong = bank is NatWestBank.Coutts
                     },
                 DomesticPayment =
@@ -260,7 +298,7 @@ public class NatWestGenerator : BankProfileGeneratorBase<NatWestBank>
                             bank is NatWestBank.NatWestSandbox or NatWestBank.RoyalBankOfScotlandSandbox,
                         ResponseDataDebtorIdentificationMayBeMissingOrWrong =
                             bank is NatWestBank.NatWestSandbox or NatWestBank.RoyalBankOfScotlandSandbox,
-                        ResponseLinksMayAddSlash = bank is NatWestBank.Coutts
+                        ResponseLinksMayHaveIncorrectUrlBeforeQuery = bank is NatWestBank.Coutts
                     },
                 DomesticVrpConsent =
                     new DomesticVrpConsentCustomBehaviour
@@ -269,35 +307,16 @@ public class NatWestGenerator : BankProfileGeneratorBase<NatWestBank>
                         ResponseRiskContractPresentIndicatorMayBeMissingOrWrong =
                             bank is NatWestBank.NatWestSandbox or NatWestBank.RoyalBankOfScotlandSandbox,
                         ResponseDataFundsAvailableResultFundsAvailableMayBeWrong =
-                            bank is NatWestBank.NatWestSandbox or NatWestBank.RoyalBankOfScotlandSandbox
+                            bank is NatWestBank.NatWestSandbox or NatWestBank.RoyalBankOfScotlandSandbox,
+                        ResponseLinksMayHaveIncorrectUrlBeforeQuery = bank is NatWestBank.Coutts
                     },
                 DomesticVrp = new DomesticVrpCustomBehaviour
                 {
                     PreferMisspeltContractPresentIndicator = true,
                     ResponseDataStatusMayBeMissingOrWrong =
-                        bank is NatWestBank.NatWestSandbox or NatWestBank.RoyalBankOfScotlandSandbox
+                        bank is NatWestBank.NatWestSandbox or NatWestBank.RoyalBankOfScotlandSandbox,
+                    ResponseLinksMayHaveIncorrectUrlBeforeQuery = bank is NatWestBank.Coutts
                 }
-            },
-            AspspBrandId = bank switch
-            {
-                NatWestBank.NatWestSandbox => 100001, // sandbox
-                NatWestBank.NatWest
-                    or NatWestBank.NatWestBankline
-                    or NatWestBank.NatWestClearSpend
-                    or NatWestBank.Mettle => 13,
-                NatWestBank.RoyalBankOfScotlandSandbox => 100002, // sandbox
-                NatWestBank.RoyalBankOfScotland
-                    or NatWestBank.RoyalBankOfScotlandBankline
-                    or NatWestBank.RoyalBankOfScotlandClearSpend
-                    or NatWestBank.TheOne
-                    or NatWestBank.NatWestOne
-                    or NatWestBank.VirginOne => 14,
-                NatWestBank.UlsterBankNi
-                    or NatWestBank.UlsterBankNiBankline
-                    or NatWestBank.UlsterBankNiClearSpend =>
-                    13,
-                NatWestBank.Coutts => 13,
-                _ => throw new ArgumentOutOfRangeException()
             },
             AispUseV4ByDefault = true,
             PispUseV4ByDefault = true,

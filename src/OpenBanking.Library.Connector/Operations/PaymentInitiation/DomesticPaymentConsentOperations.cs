@@ -14,7 +14,6 @@ using FinnovationLabs.OpenBanking.Library.Connector.Metrics;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Cache.Management;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Persistent.Management;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public;
-using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.Management;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.PaymentInitiation;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.PaymentInitiation.Request;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.PaymentInitiation.Response;
@@ -357,7 +356,10 @@ internal class
         // Load DomesticPaymentConsent and related
         (DomesticPaymentConsentPersisted persistedConsent, BankRegistrationEntity bankRegistration,
                 SoftwareStatementEntity softwareStatement, ExternalApiSecretEntity? externalApiSecret) =
-            await _domesticPaymentConsentCommon.GetDomesticPaymentConsent(readParams.Id, false);
+            await _domesticPaymentConsentCommon.GetDomesticPaymentConsent(
+                readParams.Id,
+                false,
+                ConsentIdSource.UrlPath);
         string externalApiConsentId = persistedConsent.ExternalApiId;
         bool pispUseV4 = persistedConsent.CreatedWithV4;
 
@@ -530,7 +532,7 @@ internal class
         // Load DomesticPaymentConsent and related
         (DomesticPaymentConsentPersisted persistedConsent, BankRegistrationEntity bankRegistration,
                 SoftwareStatementEntity softwareStatement, ExternalApiSecretEntity? externalApiSecret) =
-            await _domesticPaymentConsentCommon.GetDomesticPaymentConsent(readParams.Id, true);
+            await _domesticPaymentConsentCommon.GetDomesticPaymentConsent(readParams.Id, true, ConsentIdSource.UrlPath);
         string externalApiConsentId = persistedConsent.ExternalApiId;
         bool pispUseV4 = persistedConsent.CreatedWithV4;
 
@@ -540,7 +542,6 @@ internal class
         bool supportsSca = bankProfile.SupportsSca;
         string bankFinancialId = bankProfile.PaymentInitiationApiSettings.FinancialId ?? bankProfile.FinancialId;
         string issuerUrl = bankProfile.IssuerUrl;
-        IdTokenSubClaimType idTokenSubClaimType = bankProfile.BankConfigurationApiSettings.IdTokenSubClaimType;
         DomesticPaymentConsentCustomBehaviour? readWriteGetCustomBehaviour =
             bankProfile.CustomBehaviour?.DomesticPaymentConsent;
         RefreshTokenGrantPostCustomBehaviour? domesticPaymentConsentRefreshTokenGrantPostCustomBehaviour =
@@ -559,12 +560,10 @@ internal class
             (await _obSealCertificateMethods.GetValue(softwareStatement.DefaultObSealCertificateId)).ObSealKey;
 
         // Get access token
-        string bankTokenIssuerClaim = domesticPaymentConsentAuthGetCustomBehaviour
-            ?.AudClaim ?? issuerUrl; // Get bank token issuer ("iss") claim
         string accessToken =
             await _consentAccessTokenGet.GetAccessTokenAndUpdateConsent(
                 persistedConsent,
-                bankTokenIssuerClaim,
+                issuerUrl,
                 "payments",
                 bankRegistration,
                 _domesticPaymentConsentCommon.GetAccessToken,
@@ -577,10 +576,10 @@ internal class
                 obSealKey,
                 supportsSca,
                 bankProfile.BankProfileEnum,
-                idTokenSubClaimType,
                 domesticPaymentConsentRefreshTokenGrantPostCustomBehaviour,
                 jwksGetCustomBehaviour,
-                readParams.ModifiedBy);
+                readParams.ModifiedBy,
+                bankProfile.CustomBehaviour?.BaseIdTokenProcessingCustomBehaviour);
 
         // Read object from external API
         var externalApiUrl = new Uri(

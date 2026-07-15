@@ -14,7 +14,6 @@ using FinnovationLabs.OpenBanking.Library.Connector.Metrics;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Cache.Management;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Persistent.Management;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public;
-using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.Management;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.Request;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.VariableRecurringPayments;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.VariableRecurringPayments.Request;
@@ -102,7 +101,10 @@ internal class
         // Load DomesticVrpConsent and related
         (DomesticVrpConsentPersisted persistedConsent, BankRegistrationEntity bankRegistration,
                 SoftwareStatementEntity softwareStatement, ExternalApiSecretEntity? externalApiSecret) =
-            await _domesticVrpConsentCommon.GetDomesticVrpConsent(createParams.ConsentId, true);
+            await _domesticVrpConsentCommon.GetDomesticVrpConsent(
+                createParams.ConsentId,
+                true,
+                ConsentIdSource.UrlPath);
         string externalApiConsentId = persistedConsent.ExternalApiId;
         bool vrpUseV4 = persistedConsent.CreatedWithV4 || persistedConsent.MigratedToV4;
 
@@ -128,7 +130,6 @@ internal class
         string bankFinancialId =
             bankProfile.VariableRecurringPaymentsApiSettings.FinancialId ?? bankProfile.FinancialId;
         string issuerUrl = bankProfile.IssuerUrl;
-        IdTokenSubClaimType idTokenSubClaimType = bankProfile.BankConfigurationApiSettings.IdTokenSubClaimType;
         RefreshTokenGrantPostCustomBehaviour? domesticVrpConsentRefreshTokenGrantPostCustomBehaviour =
             bankProfile.CustomBehaviour?.DomesticVrpConsentRefreshTokenGrantPost;
         JwksGetCustomBehaviour? jwksGetCustomBehaviour = bankProfile.CustomBehaviour?.JwksGet;
@@ -147,12 +148,10 @@ internal class
             (await _obSealCertificateMethods.GetValue(softwareStatement.DefaultObSealCertificateId)).ObSealKey;
 
         // Get access token
-        string bankTokenIssuerClaim = domesticVrpConsentAuthGetCustomBehaviour
-            ?.AudClaim ?? issuerUrl; // Get bank token issuer ("iss") claim
         string accessToken =
             await _consentAccessTokenGet.GetAccessTokenAndUpdateConsent(
                 persistedConsent,
-                bankTokenIssuerClaim,
+                issuerUrl,
                 "payments",
                 bankRegistration,
                 _domesticVrpConsentCommon.GetAccessToken,
@@ -165,10 +164,10 @@ internal class
                 obSealKey,
                 supportsSca,
                 bankProfile.BankProfileEnum,
-                idTokenSubClaimType,
                 domesticVrpConsentRefreshTokenGrantPostCustomBehaviour,
                 jwksGetCustomBehaviour,
-                createParams.Request.ModifiedBy);
+                createParams.Request.ModifiedBy,
+                bankProfile.CustomBehaviour?.BaseIdTokenProcessingCustomBehaviour);
 
         // Read object from external API
         var externalApiUrl = new Uri(
@@ -543,7 +542,7 @@ internal class
         // Load DomesticVrpConsent and related
         (DomesticVrpConsentPersisted persistedConsent, BankRegistrationEntity bankRegistration,
                 SoftwareStatementEntity softwareStatement, ExternalApiSecretEntity? externalApiSecret) =
-            await _domesticVrpConsentCommon.GetDomesticVrpConsent(readParams.Id, false);
+            await _domesticVrpConsentCommon.GetDomesticVrpConsent(readParams.Id, false, ConsentIdSource.UrlPath);
         string externalApiConsentId = persistedConsent.ExternalApiId;
         bool vrpUseV4 = persistedConsent.CreatedWithV4 || persistedConsent.MigratedToV4;
 
@@ -732,7 +731,7 @@ internal class
         // Load DomesticVrpConsent and related
         (DomesticVrpConsentPersisted persistedConsent, BankRegistrationEntity bankRegistration,
                 SoftwareStatementEntity softwareStatement, ExternalApiSecretEntity? externalApiSecret) =
-            await _domesticVrpConsentCommon.GetDomesticVrpConsent(updateParams.Id, true);
+            await _domesticVrpConsentCommon.GetDomesticVrpConsent(updateParams.Id, true, ConsentIdSource.UrlPath);
         string externalApiConsentId = persistedConsent.ExternalApiId;
         var vrpUseV4 = true; // only v4 APIs support consent migration
 

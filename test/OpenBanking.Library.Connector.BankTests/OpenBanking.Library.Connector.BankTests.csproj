@@ -1,4 +1,4 @@
-<Project Sdk="MSTest.Sdk/4.1.0">
+<Project Sdk="MSTest.Sdk/4.2.3">
 
     <PropertyGroup>
         <TargetFramework>net9.0</TargetFramework>
@@ -9,16 +9,22 @@
         <RootNamespace>FinnovationLabs.OpenBanking.Library.Connector.BankTests</RootNamespace>
         <Copyright>Finnovation Labs Limited</Copyright>
         <Company>Finnovation Labs Limited</Company>
+        <IsPackable>false</IsPackable>
+        <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
+        <UseVSTest>true</UseVSTest>
     </PropertyGroup>
 
     <ItemGroup>
         <FrameworkReference Include="Microsoft.AspNetCore.App"/>
-        <PackageReference Include="FluentAssertions" Version="7.2.0"/>
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.3.0"/>
-        <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="9.0.14"/>
-        <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.14"/>
-        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.14"/>
-        <PackageReference Include="Microsoft.Playwright" Version="1.58.0"/>
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="9.0.17"/>
+        <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.17"/>
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.17"/>
+        <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="9.0.17"/>
+        <PackageReference Include="Microsoft.Playwright" Version="1.60.0"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="wwwroot\**"/>
     </ItemGroup>
 
     <ItemGroup>
