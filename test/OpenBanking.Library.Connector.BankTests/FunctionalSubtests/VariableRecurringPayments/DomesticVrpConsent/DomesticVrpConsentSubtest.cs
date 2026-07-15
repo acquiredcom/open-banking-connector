@@ -6,9 +6,7 @@ using FinnovationLabs.OpenBanking.Library.Connector.BankProfiles;
 using FinnovationLabs.OpenBanking.Library.Connector.BankTests.BankTests;
 using FinnovationLabs.OpenBanking.Library.Connector.BankTests.BrowserInteraction;
 using FinnovationLabs.OpenBanking.Library.Connector.BankTests.Models.Repository;
-using FinnovationLabs.OpenBanking.Library.Connector.Fluent;
 using FinnovationLabs.OpenBanking.Library.Connector.Fluent.Primitives;
-using FinnovationLabs.OpenBanking.Library.Connector.GenericHost;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Fapi;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Persistent.VariableRecurringPayments;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public;
@@ -17,9 +15,9 @@ using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.VariableRecurr
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.VariableRecurringPayments.Response;
 using FinnovationLabs.OpenBanking.Library.Connector.Operations;
 using FinnovationLabs.OpenBanking.Library.Connector.Persistence;
-using FinnovationLabs.OpenBanking.Library.Connector.Web;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.DependencyInjection;
 using DomesticVrpConsentAuthContext =
     FinnovationLabs.OpenBanking.Library.Connector.Models.Public.VariableRecurringPayments.Request.
     DomesticVrpConsentAuthContext;
@@ -44,7 +42,7 @@ public class DomesticVrpConsentSubtest(
         PaymentsEnv paymentsEnv,
         string testNameUnique,
         string modifiedBy,
-        FilePathBuilder vrpFluentRequestLogging,
+        FilePathBuilder? vrpFluentRequestLogging,
         ConsentAuth consentAuth,
         string authUrlLeftPart,
         BankUser? bankUser,
@@ -228,11 +226,10 @@ public class DomesticVrpConsentSubtest(
             {
                 {
                     // Get new application services scope
-                    using IServiceScopeContainer serviceScopeContainer =
-                        new ServiceScopeFromDependencyInjection(appServiceProvider);
+                    using IServiceScope scope = appServiceProvider.CreateScope();
 
                     // Get consent
-                    IDbService dbService = serviceScopeContainer.DbService;
+                    var dbService = scope.ServiceProvider.GetRequiredService<IDbService>();
                     IDbMethods dbMethods = dbService.GetDbMethods();
                     IDbEntityMethods<Connector.Models.Persistent.VariableRecurringPayments.DomesticVrpConsent>
                         consentEntityMethods =
@@ -336,7 +333,7 @@ public class DomesticVrpConsentSubtest(
 
     private static async Task<DomesticVrpConsentFundsConfirmationRequest> GetDomesticVrpConsentFundsConfirmationRequest(
         string modifiedBy,
-        FilePathBuilder vrpFluentRequestLogging,
+        FilePathBuilder? vrpFluentRequestLogging,
         string amount,
         string referenceName,
         VariableRecurringPaymentsApiSettings variableRecurringPaymentsApiSettings)
@@ -364,11 +361,14 @@ public class DomesticVrpConsentSubtest(
             ModifiedBy = "placeholder" // logging placeholder
         };
 
-        await vrpFluentRequestLogging
-            .AppendToPath("domesticVrpConsent")
-            .AppendToPath("fundsConfirmation")
-            .AppendToPath("postRequest")
-            .WriteFile(domesticVrpConsentFundsConfirmationRequest);
+        if (vrpFluentRequestLogging is not null)
+        {
+            await vrpFluentRequestLogging
+                .AppendToPath("domesticVrpConsent")
+                .AppendToPath("fundsConfirmation")
+                .AppendToPath("postRequest")
+                .WriteFile(domesticVrpConsentFundsConfirmationRequest);
+        }
 
         domesticVrpConsentFundsConfirmationRequest.ExternalApiRequest.Data.InstructedAmount.Amount =
             amount; // replace logging placeholder
@@ -382,7 +382,7 @@ public class DomesticVrpConsentSubtest(
     private static async Task<DomesticVrpRequest> GetDomesticVrpRequest(
         Guid domesticVrpConsentId,
         string modifiedBy,
-        FilePathBuilder vrpFluentRequestLogging,
+        FilePathBuilder? vrpFluentRequestLogging,
         string instructionIdentification,
         string endToEndIdentification,
         string amount,
@@ -467,10 +467,13 @@ public class DomesticVrpConsentSubtest(
             ExternalApiRequest = externalApiRequest,
             ModifiedBy = "placeholder" // logging placeholder
         };
-        await vrpFluentRequestLogging
-            .AppendToPath("domesticVrp")
-            .AppendToPath("postRequest")
-            .WriteFile(domesticVrpRequest);
+        if (vrpFluentRequestLogging is not null)
+        {
+            await vrpFluentRequestLogging
+                .AppendToPath("domesticVrp")
+                .AppendToPath("postRequest")
+                .WriteFile(domesticVrpRequest);
+        }
 
         domesticVrpRequest.DomesticVrpConsentId = domesticVrpConsentId; // replace logging placeholder
         domesticVrpRequest.ModifiedBy = modifiedBy; // replace logging placeholder
@@ -523,7 +526,7 @@ public class DomesticVrpConsentSubtest(
         Guid bankRegistrationId,
         string testNameUnique,
         string modifiedBy,
-        FilePathBuilder vrpFluentRequestLogging,
+        FilePathBuilder? vrpFluentRequestLogging,
         string referenceName,
         PaymentsEnv paymentsEnv,
         VariableRecurringPaymentsApiSettings variableRecurringPaymentsApiSettings)
@@ -604,10 +607,13 @@ public class DomesticVrpConsentSubtest(
             CreatedBy = "placeholder" // logging placeholder
         };
 
-        await vrpFluentRequestLogging
-            .AppendToPath("domesticVrpConsent")
-            .AppendToPath("postRequest")
-            .WriteFile(domesticVrpConsentRequest);
+        if (vrpFluentRequestLogging is not null)
+        {
+            await vrpFluentRequestLogging
+                .AppendToPath("domesticVrpConsent")
+                .AppendToPath("postRequest")
+                .WriteFile(domesticVrpConsentRequest);
+        }
 
         domesticVrpConsentRequest.BankRegistrationId = bankRegistrationId; // replace logging placeholder
         domesticVrpConsentRequest.ExternalApiRequest.Data.Initiation.CreditorAccount!.SchemeName =

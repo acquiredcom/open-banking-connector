@@ -2,11 +2,11 @@
 // Finnovation Labs Limited licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using FinnovationLabs.OpenBanking.Library.Connector.BankProfiles.CustomBehaviour;
 using FinnovationLabs.OpenBanking.Library.Connector.Instrumentation;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Persistent;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Persistent.AccountAndTransaction;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Persistent.Management;
+using FinnovationLabs.OpenBanking.Library.Connector.Models.Public;
 using FinnovationLabs.OpenBanking.Library.Connector.Persistence;
 using Microsoft.EntityFrameworkCore;
 using AccountAccessConsentPersisted =
@@ -50,7 +50,8 @@ internal class AccountAccessConsentCommon
             SoftwareStatementEntity softwareStatement, ExternalApiSecretEntity? externalApiSecret)>
         GetAccountAccessConsent(
             Guid consentId,
-            bool dbTracking)
+            bool dbTracking,
+            ConsentIdSource consentIdSource)
     {
         IQueryable<AccountAccessConsentPersisted> db = dbTracking
             ? _entityMethods.DbSet
@@ -68,7 +69,10 @@ internal class AccountAccessConsentCommon
                     .Include(o => o.BankRegistrationNavigation.ExternalApiSecretsNavigation)
                     .AsSplitQuery() // Load collections in separate SQL queries
                     .SingleOrDefaultAsync(x => x.Id == consentId) ??
-                throw new KeyNotFoundException($"No record found for Account Access Consent with ID {consentId}.");
+                throw ConsentServerErrors.ConsentNotFoundException(
+                    ConsentType.AccountAccessConsent,
+                    consentIdSource,
+                    consentId);
             bankRegistration = persistedConsent.BankRegistrationNavigation;
 
             softwareStatement = bankRegistration.SoftwareStatementNavigation;
@@ -81,7 +85,10 @@ internal class AccountAccessConsentCommon
             persistedConsent =
                 await db
                     .SingleOrDefaultAsync(x => x.Id == consentId) ??
-                throw new KeyNotFoundException($"No record found for Account Access Consent with ID {consentId}.");
+                throw ConsentServerErrors.ConsentNotFoundException(
+                    ConsentType.AccountAccessConsent,
+                    consentIdSource,
+                    consentId);
             bankRegistration = await _bankRegistrationMethods
                 .DbSetNoTracking
                 .SingleAsync(x => x.Id == persistedConsent.BankRegistrationId);
@@ -199,9 +206,4 @@ internal class AccountAccessConsentCommon
 
         return refreshTokens.FirstOrDefault();
     }
-
-    public static string GetBankTokenIssuerClaim(CustomBehaviourClass? customBehaviour, string issuerUrl) =>
-        customBehaviour
-            ?.AccountAccessConsentAuthGet
-            ?.AudClaim ?? issuerUrl;
 }

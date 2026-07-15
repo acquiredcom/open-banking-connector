@@ -5,16 +5,15 @@
 using System.Reflection;
 using FinnovationLabs.OpenBanking.Library.Connector.GenericHost.Extensions;
 using FinnovationLabs.OpenBanking.Library.Connector.Persistence;
-using FinnovationLabs.OpenBanking.Library.Connector.Web;
 using FinnovationLabs.OpenBanking.Library.Connector.Web.Extensions;
 using FinnovationLabs.OpenBanking.WebApp.Connector.Extensions;
+using FinnovationLabs.OpenBanking.WebApp.Connector.Filters;
 using Microsoft.OpenApi;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
+using OpenTelemetry.Trace;
 using AccountAndTransactionModelsPublic =
     FinnovationLabs.OpenBanking.Library.BankApiModels.UkObRw.V4p0.NSwagAisp.Models;
-using ServiceCollectionExtensionsWeb =
-    FinnovationLabs.OpenBanking.Library.Connector.Web.Extensions.ServiceCollectionExtensions;
 using ServiceCollectionExtensionsGenericHost =
     FinnovationLabs.OpenBanking.Library.Connector.GenericHost.Extensions.ServiceCollectionExtensions;
 
@@ -33,9 +32,9 @@ serviceVersion = serviceVersion.Remove(serviceVersion.LastIndexOf('.'));
 
 builder.Services
     // Add .NET generic host app services 
-    .AddGenericHostServices(builder.Configuration)
+    .AddGenericHostServices(builder.Configuration, serviceVersion, b => b.AddAspNetCoreInstrumentation())
     // Add .NET web host app services
-    .AddWebHostServices(builder.Configuration, serviceVersion)
+    .AddWebHostServices(serviceVersion)
     // Configure Swagger
     .AddSwaggerGen(
         options =>
@@ -80,15 +79,6 @@ builder.Services
                     Version = serviceVersion,
                     Description = "Auth Contexts API for Open Banking Connector Web App"
                 });
-            options.SwaggerDoc(
-                "test",
-                new OpenApiInfo
-                {
-                    Title = "Testing (non-production) API",
-                    Version = serviceVersion,
-                    Description =
-                        "Testing API for Open Banking Connector Web App. Endpoints should not be used in production."
-                });
 
             // Add XML from this assembly
             var xmlFilename = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
@@ -101,10 +91,6 @@ builder.Services
             options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFilename));
             // Add XML from OpenBankingLibrary.GenericHost
             xmlFilename = $"{typeof(ServiceCollectionExtensionsGenericHost).GetTypeInfo().Assembly.GetName().Name}.xml";
-            options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFilename));
-            // Add XML from OpenBankingLibrary.Web
-            xmlFilename =
-                $"{typeof(ServiceCollectionExtensionsWeb).GetTypeInfo().Assembly.GetName().Name}.xml";
             options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, xmlFilename));
         })
     .AddSwaggerGenNewtonsoftSupport()
@@ -130,7 +116,9 @@ builder.Services
 
 builder
     .Logging
-    .AddWebHostLogging(builder.Configuration, serviceVersion);
+    .ClearProviders()
+    .AddConsole()
+    .AddGenericHostLogging(builder.Configuration, serviceVersion);
 
 // Build app
 WebApplication app = builder.Build();
@@ -148,9 +136,6 @@ app.UseDefaultFilesLocal();
 // Add local static files
 app.UseStaticFiles();
 
-// Add web host static files
-app.UseWebHostStaticFiles();
-
 // Add Swagger generation
 app.UseSwagger();
 app.UseSwaggerUI(
@@ -161,7 +146,6 @@ app.UseSwaggerUI(
         c.SwaggerEndpoint("/swagger/pisp/swagger.json", "Payment Initiation API");
         c.SwaggerEndpoint("/swagger/vrp/swagger.json", "Variable Recurring Payments API");
         c.SwaggerEndpoint("/swagger/auth-contexts/swagger.json", "Auth Contexts API");
-        c.SwaggerEndpoint("/swagger/test/swagger.json", "Testing (non-production) API");
     });
 
 // Add controller endpoints

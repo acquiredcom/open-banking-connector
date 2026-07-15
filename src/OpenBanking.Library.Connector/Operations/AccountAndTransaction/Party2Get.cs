@@ -14,7 +14,6 @@ using FinnovationLabs.OpenBanking.Library.Connector.Models.Persistent.Management
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.AccountAndTransaction;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.AccountAndTransaction.Response;
-using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.Management;
 using FinnovationLabs.OpenBanking.Library.Connector.Operations.Cache;
 using FinnovationLabs.OpenBanking.Library.Connector.Operations.ExternalApi;
 using Newtonsoft.Json;
@@ -61,7 +60,10 @@ internal class Party2Get : IAccountAccessConsentExternalRead<Parties2Response, A
         // Get consent and associated data
         (AccountAccessConsentPersisted persistedConsent, BankRegistrationEntity bankRegistration,
                 SoftwareStatementEntity softwareStatement, ExternalApiSecretEntity? externalApiSecret) =
-            await _accountAccessConsentCommon.GetAccountAccessConsent(readParams.ConsentId, true);
+            await _accountAccessConsentCommon.GetAccountAccessConsent(
+                readParams.ConsentId,
+                true,
+                ConsentIdSource.RequestHeader);
 
         // Get bank profile
         BankProfile bankProfile = _bankProfileService.GetBankProfile(bankRegistration.BankProfile);
@@ -75,7 +77,6 @@ internal class Party2Get : IAccountAccessConsentExternalRead<Parties2Response, A
         string bankFinancialId =
             bankProfile.AccountAndTransactionApiSettings.GetFinancialId?.Invoke(aispUseV4) ??
             bankProfile.FinancialId;
-        IdTokenSubClaimType idTokenSubClaimType = bankProfile.BankConfigurationApiSettings.IdTokenSubClaimType;
 
         // Get IApiClient
         IApiClient apiClient = bankRegistration.UseSimulatedBank
@@ -87,13 +88,10 @@ internal class Party2Get : IAccountAccessConsentExternalRead<Parties2Response, A
             (await _obSealCertificateMethods.GetValue(softwareStatement.DefaultObSealCertificateId)).ObSealKey;
 
         // Get access token
-        string bankTokenIssuerClaim = AccountAccessConsentCommon.GetBankTokenIssuerClaim(
-            customBehaviour,
-            issuerUrl); // Get bank token issuer ("iss") claim
         string accessToken =
             await _consentAccessTokenGet.GetAccessTokenAndUpdateConsent(
                 persistedConsent,
-                bankTokenIssuerClaim,
+                issuerUrl,
                 "accounts",
                 bankRegistration,
                 _accountAccessConsentCommon.GetAccessToken,
@@ -106,10 +104,10 @@ internal class Party2Get : IAccountAccessConsentExternalRead<Parties2Response, A
                 obSealKey,
                 supportsSca,
                 bankProfile.BankProfileEnum,
-                idTokenSubClaimType,
                 customBehaviour?.AccountAccessConsentRefreshTokenGrantPost,
                 customBehaviour?.JwksGet,
-                readParams.ModifiedBy);
+                readParams.ModifiedBy,
+                customBehaviour?.BaseIdTokenProcessingCustomBehaviour);
 
         // Retrieve endpoint URL
         string urlStringWihoutQuery = readParams.ExternalApiAccountId switch

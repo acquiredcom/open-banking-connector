@@ -1,4 +1,4 @@
-﻿// Licensed to Finnovation Labs Limited under one or more agreements.
+// Licensed to Finnovation Labs Limited under one or more agreements.
 // Finnovation Labs Limited licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Net.Http.Headers;
 
-namespace FinnovationLabs.OpenBanking.Library.Connector.Web;
+namespace FinnovationLabs.OpenBanking.WebApp.Connector.Filters;
 
 public class ExternalApiHttpErrorExceptionFilter : IActionFilter, IOrderedFilter
 {
@@ -18,25 +18,15 @@ public class ExternalApiHttpErrorExceptionFilter : IActionFilter, IOrderedFilter
 
     public void OnActionExecuted(ActionExecutedContext context)
     {
-        if (context.Exception is ExternalApiAccessException httpResponseException)
+        if (context.Exception is ExternalApiResponseDeserialisationException httpResponseException)
         {
-            int statusCode;
-            if (context.Exception is ExternalApiResponseDeserialisationException ex)
-            {
-                statusCode = 500;
-            }
-            else
-            {
-                statusCode = httpResponseException.ResponseStatusCode;
-            }
-
             var jsonObject = new JsonObject
             {
                 ["title"] = httpResponseException.Message,
                 ["detail"] =
                     $"External API endpoint responded with HTTP status code {httpResponseException.ResponseStatusCode}. See properties " +
                     "'endpointHttpMethod', 'endpointUrl' and 'endpointResponse' for more details.",
-                ["status"] = statusCode,
+                ["status"] = 500,
                 ["endpointHttpMethod"] = httpResponseException.RequestHttpMethod,
                 ["endpointUrl"] = httpResponseException.RequestUrl
             };
@@ -46,22 +36,22 @@ public class ExternalApiHttpErrorExceptionFilter : IActionFilter, IOrderedFilter
                 jsonObject["endpointFapiInteractionId"] = httpResponseException.XFapiInteractionId;
             }
 
-            if (context.Exception is ExternalApiResponseDeserialisationException ex2)
-            {
-                jsonObject["deserialisationError"] = ex2.DeserialisationErrorMessage;
-            }
+            jsonObject["deserialisationError"] = httpResponseException.DeserialisationErrorMessage;
 
-            JsonNode? responseMessage;
-            try
+            if (httpResponseException.ExposeSuccessResponseBody)
             {
-                responseMessage = JsonNode.Parse(httpResponseException.ResponseMessage);
-            }
-            catch
-            {
-                responseMessage = httpResponseException.ResponseMessage;
-            }
+                JsonNode? responseMessage;
+                try
+                {
+                    responseMessage = JsonNode.Parse(httpResponseException.ResponseMessage);
+                }
+                catch (JsonException)
+                {
+                    responseMessage = httpResponseException.ResponseMessage;
+                }
 
-            jsonObject["endpointResponse"] = responseMessage;
+                jsonObject["endpointResponse"] = responseMessage;
+            }
 
             string jsonString = JsonSerializer.Serialize(jsonObject);
 
@@ -71,7 +61,7 @@ public class ExternalApiHttpErrorExceptionFilter : IActionFilter, IOrderedFilter
             {
                 Content = jsonString,
                 ContentType = mediaTypeHeaderValue.ToString(),
-                StatusCode = statusCode
+                StatusCode = 500
             };
 
             context.ExceptionHandled = true;

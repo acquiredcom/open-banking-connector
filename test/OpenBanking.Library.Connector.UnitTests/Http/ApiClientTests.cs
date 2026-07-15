@@ -4,9 +4,9 @@
 
 using System.Net;
 using System.Text;
+using FinnovationLabs.OpenBanking.Library.Connector.Fluent;
 using FinnovationLabs.OpenBanking.Library.Connector.Http;
 using FinnovationLabs.OpenBanking.Library.Connector.Instrumentation;
-using FluentAssertions;
 using Newtonsoft.Json;
 using NSubstitute;
 using RichardSzalay.MockHttp;
@@ -38,10 +38,10 @@ public class ApiClientTests
 
         HttpResponseMessage response = await apiClient.LowLevelSendAsync(req);
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        string responseContent = await response.Content.ReadAsStringAsync();
-        responseContent.Should().Be(content);
-        response.Content.Headers.ContentType?.ToString().Should().Be(contentType + "; charset=utf-8");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        string responseContent = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(content, responseContent);
+        Assert.Equal(contentType + "; charset=utf-8", response.Content.Headers.ContentType?.ToString());
     }
 
     [Theory]
@@ -69,7 +69,7 @@ public class ApiClientTests
 
     [Theory]
     [InlineData("https://yadayada.com")]
-    public void SendAsync_ExceptionLogged(string url)
+    public async Task SendAsync_ExceptionLogged(string url)
     {
         var mockHttp = new MockHttpMessageHandler();
         mockHttp.When(HttpMethod.Get, url).Respond(x => throw new HttpRequestException());
@@ -87,7 +87,7 @@ public class ApiClientTests
 
         Func<Task> a = async () => await apiClient.LowLevelSendAsync(req);
 
-        a.Should().ThrowAsync<HttpRequestException>();
+        await Assert.ThrowsAsync<HttpRequestException>(a);
     }
 
 
@@ -116,9 +116,10 @@ public class ApiClientTests
                     req,
                     "",
                     null,
-                    null);
+                    null,
+                    true);
 
-            result.Message.Should().Be(entity.Message);
+            Assert.Equal(entity.Message, result.Message);
         }
     }
 
@@ -147,9 +148,10 @@ public class ApiClientTests
                 req,
                 "",
                 null,
-                null);
+                null,
+                true);
 
-        await a.Should().ThrowAsync<HttpRequestException>();
+        await Assert.ThrowsAsync<HttpRequestException>(a);
     }
 
     [Theory]
@@ -184,9 +186,10 @@ public class ApiClientTests
                 req,
                 "",
                 null,
-                null);
+                null,
+                true);
 
-        await a.Should().ThrowAsync<ExternalApiHttpErrorException>();
+        await Assert.ThrowsAsync<HttpResponseException>(a);
     }
 
 
@@ -221,9 +224,10 @@ public class ApiClientTests
                 req,
                 "",
                 null,
-                null);
+                null,
+                true);
 
-        await a.Should().ThrowAsync<ExternalApiHttpErrorException>();
+        await Assert.ThrowsAsync<HttpResponseException>(a);
         instrumentationClient.Received(1).Trace(Arg.Any<string>());
     }
 

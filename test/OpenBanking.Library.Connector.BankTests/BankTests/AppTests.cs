@@ -14,8 +14,6 @@ using FinnovationLabs.OpenBanking.Library.Connector.BankTests.FunctionalSubtests
 using FinnovationLabs.OpenBanking.Library.Connector.BankTests.FunctionalSubtests.VariableRecurringPayments.
     DomesticVrpConsent;
 using FinnovationLabs.OpenBanking.Library.Connector.BankTests.Models.Repository;
-using FinnovationLabs.OpenBanking.Library.Connector.Configuration;
-using FinnovationLabs.OpenBanking.Library.Connector.Instrumentation;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Fapi;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.Management;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.Management.Request;
@@ -23,10 +21,10 @@ using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.Management.Res
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.Response;
 using FinnovationLabs.OpenBanking.Library.Connector.Operations;
 using FinnovationLabs.OpenBanking.Library.Connector.Utility;
-using FluentAssertions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration.UserSecrets;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.Playwright;
 using ObSealCertificateRequest =
     FinnovationLabs.OpenBanking.Library.Connector.Models.Public.Management.Request.ObSealCertificate;
@@ -239,6 +237,14 @@ public class AppTests
                         bankProfileFromEnv,
                         registrationScope,
                         bankGroup),
+                    BankGroup.Wise => GetAllInRegistrationGroup<WiseBank, WiseRegistrationGroup>(
+                        bankProfileFromEnv,
+                        registrationScope,
+                        bankGroup),
+                    BankGroup.Zopa => GetAllInRegistrationGroup<ZopaBank, ZopaRegistrationGroup>(
+                        bankProfileFromEnv,
+                        registrationScope,
+                        bankGroup),
                     _ => throw new ArgumentOutOfRangeException()
                 };
             }
@@ -354,14 +360,11 @@ public class AppTests
 
         // Get bank test settings
         BankTestSettings bankTestSettings =
-            testServiceProvider.GetRequiredService<ISettingsProvider<BankTestSettings>>().GetSettings();
-
-        // Get logger
-        var instrumentationClient = testServiceProvider.GetRequiredService<IInstrumentationClient>();
+            testServiceProvider.GetRequiredService<IOptions<BankTestSettings>>().Value;
 
         // Get bank profile definitions
         var bankProfileDefinitions =
-            testServiceProvider.GetRequiredService<IBankProfileService>();
+            appServiceProvider.GetRequiredService<IBankProfileService>();
         BankProfile bankProfile =
             bankProfileDefinitions.GetBankProfile(testData.BankProfile);
 
@@ -379,22 +382,6 @@ public class AppTests
 
         // Get application memory cache
         var memoryCache = appServiceProvider.GetRequiredService<IMemoryCache>();
-
-        // Create test data writers
-        var topLevelFolderName = "genericAppTests";
-        var testDataProcessorFluentRequestLogging = new FilePathBuilder(
-            Path.Combine(bankTestSettings.GetDataDirectoryForCurrentOs(), $"{topLevelFolderName}/fluent"),
-            testName,
-            ".json");
-
-        FilePathBuilder? testDataProcessorApiLogging = null;
-        if (bankTestSettings.LogExternalApiData)
-        {
-            testDataProcessorApiLogging = new FilePathBuilder(
-                Path.Combine(bankTestSettings.GetDataDirectoryForCurrentOs(), $"{topLevelFolderName}/api"),
-                testName,
-                ".json");
-        }
 
         // Create consent auth
         PlaywrightLaunchOptions launchOptions =
@@ -541,9 +528,7 @@ public class AppTests
                     testData.TestAuth,
                     testNameUnique,
                     ModifiedBy,
-                    testDataProcessorFluentRequestLogging
-                        .AppendToPath("aisp")
-                        .AppendToPath($"{subTest.ToString()}"),
+                    null,
                     consentAuth,
                     authUrlLeftPart,
                     bankUser,
@@ -595,9 +580,7 @@ public class AppTests
                         paymentsEnv,
                         testNameUnique,
                         ModifiedBy,
-                        testDataProcessorFluentRequestLogging
-                            .AppendToPath("pisp")
-                            .AppendToPath($"{subTest.ToString()}"),
+                        null,
                         consentAuth,
                         authUrlLeftPart,
                         bankUser);
@@ -626,9 +609,7 @@ public class AppTests
                         paymentsEnv,
                         testNameUnique,
                         ModifiedBy,
-                        testDataProcessorFluentRequestLogging
-                            .AppendToPath("vrp")
-                            .AppendToPath($"{subTest.ToString()}"),
+                        null,
                         consentAuth,
                         authUrlLeftPart,
                         bankUser,
@@ -807,11 +788,11 @@ public class AppTests
         // Checks
         if (bankRegistrationRequest.ExternalApiId is not null)
         {
-            bankRegistrationCreateResponse.ExternalApiResponse.Should().BeNull();
+            Assert.IsNull(bankRegistrationCreateResponse.ExternalApiResponse);
         }
         else
         {
-            bankRegistrationCreateResponse.ExternalApiResponse.Should().NotBeNull();
+            Assert.IsNotNull(bankRegistrationCreateResponse.ExternalApiResponse);
         }
 
         // Read BankRegistration
@@ -844,11 +825,11 @@ public class AppTests
             !bankProfileUseRegistrationGetEndpoint;
         if (noExternalApiOperation)
         {
-            bankRegistrationReadResponse.ExternalApiResponse.Should().BeNull();
+            Assert.IsNull(bankRegistrationReadResponse.ExternalApiResponse);
         }
         else
         {
-            bankRegistrationReadResponse.ExternalApiResponse.Should().NotBeNull();
+            Assert.IsNotNull(bankRegistrationReadResponse.ExternalApiResponse);
         }
 
         return bankRegistrationReadResponse;

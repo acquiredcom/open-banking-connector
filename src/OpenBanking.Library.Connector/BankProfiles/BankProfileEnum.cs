@@ -15,6 +15,7 @@ namespace FinnovationLabs.OpenBanking.Library.Connector.BankProfiles;
 [JsonConverter(typeof(StringEnumConverter))]
 public enum BankProfileEnum
 {
+    [Obsolete("Not supported.")]
     [EnumMember(Value = "Barclays_Sandbox")]
     Barclays_Sandbox,
 
@@ -69,6 +70,9 @@ public enum BankProfileEnum
     [EnumMember(Value = "Hsbc_HsbcNetUk")]
     Hsbc_HsbcNetUk,
 
+    [EnumMember(Value = "Hsbc_MAndS")]
+    Hsbc_MAndS,
+
     [EnumMember(Value = "Lloyds_Sandbox")]
     Lloyds_Sandbox,
 
@@ -104,6 +108,9 @@ public enum BankProfileEnum
 
     [EnumMember(Value = "Nationwide_Nationwide")]
     Nationwide_Nationwide,
+
+    [EnumMember(Value = "Nationwide_VirginMerged")]
+    Nationwide_VirginMerged,
 
     [EnumMember(Value = "NatWest_NatWestSandbox")]
     NatWest_NatWestSandbox,
@@ -178,5 +185,11 @@ public enum BankProfileEnum
     Tide_Tide,
 
     [EnumMember(Value = "Tsb_Tsb")]
-    Tsb_Tsb
+    Tsb_Tsb,
+
+    [EnumMember(Value = "Wise_Wise")]
+    Wise_Wise,
+
+    [EnumMember(Value = "Zopa_Zopa")]
+    Zopa_Zopa
 }

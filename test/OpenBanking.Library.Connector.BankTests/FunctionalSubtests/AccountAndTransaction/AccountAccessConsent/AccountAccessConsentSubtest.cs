@@ -7,8 +7,6 @@ using FinnovationLabs.OpenBanking.Library.Connector.BankProfiles.Templates.Accou
 using FinnovationLabs.OpenBanking.Library.Connector.BankTests.BankTests;
 using FinnovationLabs.OpenBanking.Library.Connector.BankTests.BrowserInteraction;
 using FinnovationLabs.OpenBanking.Library.Connector.BankTests.Models.Repository;
-using FinnovationLabs.OpenBanking.Library.Connector.Fluent;
-using FinnovationLabs.OpenBanking.Library.Connector.GenericHost;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Fapi;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Persistent.AccountAndTransaction;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public;
@@ -18,9 +16,9 @@ using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.Request;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.Response;
 using FinnovationLabs.OpenBanking.Library.Connector.Operations;
 using FinnovationLabs.OpenBanking.Library.Connector.Persistence;
-using FinnovationLabs.OpenBanking.Library.Connector.Web;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.DependencyInjection;
 using AccountAccessConsentAuthContext =
     FinnovationLabs.OpenBanking.Library.Connector.Models.Public.AccountAndTransaction.Request.
     AccountAccessConsentAuthContext;
@@ -45,7 +43,7 @@ public class AccountAccessConsentSubtest(
         bool testAuth,
         string testNameUnique,
         string modifiedBy,
-        FilePathBuilder aispFluentRequestLogging,
+        FilePathBuilder? aispFluentRequestLogging,
         ConsentAuth consentAuth,
         string authUrlLeftPart,
         BankUser? bankUser,
@@ -67,6 +65,13 @@ public class AccountAccessConsentSubtest(
         // Create fresh AccountAccessConsent
         AccountAccessConsentCreateResponse accountAccessConsentCreateResponseTmp =
             await accountAndTransactionApiClient.AccountAccessConsentCreate(accountAccessConsentRequest);
+
+        if (bankProfile.AccountAndTransactionApiSettings.AccountAccessConsentPostCreateDelaySeconds > 0)
+        {
+            await Task.Delay(
+                TimeSpan.FromSeconds(
+                    bankProfile.AccountAndTransactionApiSettings.AccountAccessConsentPostCreateDelaySeconds));
+        }
 
         // Read fresh AccountAccessConsent
         AccountAccessConsentCreateResponse accountAccessConsentReadResponse =
@@ -366,11 +371,10 @@ public class AccountAccessConsentSubtest(
             {
                 {
                     // Get new application services scope
-                    using IServiceScopeContainer serviceScopeContainer =
-                        new ServiceScopeFromDependencyInjection(appServiceProvider);
+                    using IServiceScope scope = appServiceProvider.CreateScope();
 
                     // Get consent
-                    IDbService dbService = serviceScopeContainer.DbService;
+                    var dbService = scope.ServiceProvider.GetRequiredService<IDbService>();
                     IDbMethods dbMethods = dbService.GetDbMethods();
                     IDbEntityMethods<Connector.Models.Persistent.AccountAndTransaction.AccountAccessConsent>
                         consentEntityMethods =
@@ -474,7 +478,7 @@ public class AccountAccessConsentSubtest(
             Guid bankRegistrationId,
             string testNameUnique,
             string modifiedBy,
-            FilePathBuilder aispFluentRequestLogging)
+            FilePathBuilder? aispFluentRequestLogging)
     {
         var accountAccessConsentRequest =
             new AccountAccessConsentRequest
@@ -504,10 +508,13 @@ public class AccountAccessConsentSubtest(
                 default(DateTimeOffset); // substitute logging placeholder
         }
 
-        await aispFluentRequestLogging
-            .AppendToPath("accountAccessConsent")
-            .AppendToPath("postRequest")
-            .WriteFile(accountAccessConsentRequest);
+        if (aispFluentRequestLogging is not null)
+        {
+            await aispFluentRequestLogging
+                .AppendToPath("accountAccessConsent")
+                .AppendToPath("postRequest")
+                .WriteFile(accountAccessConsentRequest);
+        }
         accountAccessConsentRequest.BankRegistrationId = bankRegistrationId; // remove logging placeholder
         if (expDateTime is not null)
         {

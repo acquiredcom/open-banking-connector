@@ -3,7 +3,7 @@
   "info": {
     "title": "Management API",
     "description": "Management API for Open Banking Connector Web App",
-    "version": "18.2.0"
+    "version": "20.0.0"
   },
   "paths": {
     "/manage/bank-registrations": {
@@ -730,7 +730,9 @@
           "Santander",
           "Starling",
           "Tide",
-          "Tsb"
+          "Tsb",
+          "Wise",
+          "Zopa"
         ],
         "type": "string"
       },
@@ -754,6 +756,7 @@
           "Hsbc_UkKinetic",
           "Hsbc_UkPersonal",
           "Hsbc_HsbcNetUk",
+          "Hsbc_MAndS",
           "Lloyds_Sandbox",
           "Lloyds_LloydsPersonal",
           "Lloyds_LloydsBusiness",
@@ -766,6 +769,7 @@
           "Monzo_Monzo",
           "Monzo_Sandbox",
           "Nationwide_Nationwide",
+          "Nationwide_VirginMerged",
           "NatWest_NatWestSandbox",
           "NatWest_NatWest",
           "NatWest_NatWestBankline",
@@ -790,7 +794,9 @@
           "Santander_Corporate",
           "Starling_Starling",
           "Tide_Tide",
-          "Tsb_Tsb"
+          "Tsb_Tsb",
+          "Wise_Wise",
+          "Zopa_Zopa"
         ],
         "type": "string",
         "description": "Banks for which bank profiles have been created. Called BankProfileEnum to avoid confusion with the associated\r\nclass BankProfile."

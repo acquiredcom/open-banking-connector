@@ -14,7 +14,6 @@ using FinnovationLabs.OpenBanking.Library.Connector.Models.Persistent.AccountAnd
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Persistent.Management;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Persistent.PaymentInitiation;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Persistent.VariableRecurringPayments;
-using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.Management;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.Request;
 using FinnovationLabs.OpenBanking.Library.Connector.Models.Public.Response;
 using FinnovationLabs.OpenBanking.Library.Connector.Operations.AccountAndTransaction;
@@ -149,11 +148,7 @@ internal class AuthContextUpdate :
                             .DomesticVrpConsentRefreshTokensNavigation)
                     .AsSplitQuery() // Load collections in separate SQL queries
                     .SingleOrDefault(x => x.State == state) ??
-                throw new HttpResponseException(
-                    ProblemDetailsTitle.AuthContextNotFound,
-                    "No record found for Auth Context with specified state.",
-                    400,
-                    new Dictionary<string, object?> { ["state"] = $"{state}" });
+                throw new HttpResponseException(new AuthContextNotFoundServerError(state));
         }
         else
         {
@@ -161,11 +156,7 @@ internal class AuthContextUpdate :
                 _authContextMethods
                     .DbSet
                     .SingleOrDefault(x => x.State == state) ??
-                throw new HttpResponseException(
-                    ProblemDetailsTitle.AuthContextNotFound,
-                    "No record found for Auth Context with specified state.",
-                    400,
-                    new Dictionary<string, object?> { ["state"] = $"{state}" });
+                throw new HttpResponseException(new AuthContextNotFoundServerError(state));
         }
 
         // Only accept redirects within 10 mins of auth context (session) creation
@@ -174,19 +165,13 @@ internal class AuthContextUpdate :
             .AddSeconds(authContextExpiryIntervalInSeconds);
         if (_timeProvider.GetUtcNow() > authContextExpiryTime)
         {
-            throw new HttpResponseException(
-                ProblemDetailsTitle.AuthContextStale,
-                "Auth context exists but now stale (more than ten minutes old) so will not process redirect. " +
-                "Please create a new auth context and authenticate again.",
-                400,
-                new Dictionary<string, object?> { ["state"] = $"{state}" });
+            throw new HttpResponseException(new AuthContextStaleServerError(state));
         }
 
         // Validate error parameter
         if (request.OAuth2RedirectOptionalParameters.Error is not null)
         {
-            throw new InvalidOperationException(
-                $"OAuth2 error parameter received: {request.OAuth2RedirectOptionalParameters.Error}");
+            throw new InvalidOperationException("OAuth2 error parameter received.");
         }
 
         // Validate code parameter
@@ -223,7 +208,8 @@ internal class AuthContextUpdate :
                     SoftwareStatementEntity softwareStatementEntity, ExternalApiSecretEntity? externalApiSecret) =
                 await _accountAccessConsentCommon.GetAccountAccessConsent(
                     ac.AccountAccessConsentId,
-                    true);
+                    true,
+                    ConsentIdSource.DatabaseForeignKey);
 
             AccessTokenEntity? accessToken =
                 await _accountAccessConsentCommon.GetAccessToken(persistedConsent.Id, true);
@@ -243,7 +229,8 @@ internal class AuthContextUpdate :
                     SoftwareStatementEntity softwareStatementEntity, ExternalApiSecretEntity? externalApiSecret) =
                 await _domesticPaymentConsentCommon.GetDomesticPaymentConsent(
                     ac.DomesticPaymentConsentId,
-                    true);
+                    true,
+                    ConsentIdSource.DatabaseForeignKey);
             AccessTokenEntity? accessToken =
                 await _domesticPaymentConsentCommon.GetAccessToken(persistedConsent.Id, true);
             RefreshTokenEntity? refreshToken =
@@ -263,7 +250,8 @@ internal class AuthContextUpdate :
                     SoftwareStatementEntity softwareStatementEntity, ExternalApiSecretEntity? externalApiSecret) =
                 await _domesticVrpConsentCommon.GetDomesticVrpConsent(
                     ac.DomesticVrpConsentId,
-                    true);
+                    true,
+                    ConsentIdSource.DatabaseForeignKey);
             AccessTokenEntity? accessToken =
                 await _domesticVrpConsentCommon.GetAccessToken(persistedConsent.Id, true);
             RefreshTokenEntity? refreshToken =
@@ -339,7 +327,6 @@ internal class AuthContextUpdate :
             bankRegistration.DefaultResponseModeOverride ?? bankProfile.DefaultResponseMode;
         bool supportsSca = bankProfile.SupportsSca;
         string issuerUrl = bankProfile.IssuerUrl;
-        IdTokenSubClaimType idTokenSubClaimType = bankProfile.BankConfigurationApiSettings.IdTokenSubClaimType;
         CustomBehaviourClass? customBehaviour = bankProfile.CustomBehaviour;
         string redirectUrl = softwareStatement.GetRedirectUri(
             defaultResponseMode,
@@ -403,45 +390,38 @@ internal class AuthContextUpdate :
             _ => throw new ArgumentOutOfRangeException()
         };
         bool nonceClaimIsInitialValue =
-            consentAuthGetCustomBehaviour?.IdTokenProcessingCustomBehaviour?.IdTokenNonceClaimIsPreviousValue ?? false;
+            IdTokenProcessingCustomBehaviour.GetIdTokenNonceClaimIsPreviousValue(
+                consentAuthGetCustomBehaviour?.IdTokenProcessingCustomBehaviour,
+                customBehaviour?.BaseIdTokenProcessingCustomBehaviour);
         string nonce = nonceClaimIsInitialValue && consent.AuthContextNonce is not null
             ? consent.AuthContextNonce
             : authContextNonce;
 
         // Validate ID token including nonce
-        string? requestObjectAudClaim = consentAuthGetCustomBehaviour?.AudClaim;
-        string bankTokenIssuerClaim =
-            requestObjectAudClaim ??
-            issuerUrl;
         DateTimeOffset modified = _timeProvider.GetUtcNow();
         if (idToken is not null)
         {
-            bool doNotValidateIdToken =
-                consentAuthGetCustomBehaviour?.IdTokenProcessingCustomBehaviour?.DoNotValidateIdToken ?? false;
-            if (doNotValidateIdToken is false)
+            string? newExternalApiUserId = await _grantPost.ValidateIdTokenAuthEndpoint(
+                idToken,
+                code,
+                state,
+                consentAuthGetCustomBehaviour?.IdTokenProcessingCustomBehaviour,
+                customBehaviour?.BaseIdTokenProcessingCustomBehaviour,
+                jwksUri,
+                customBehaviour?.JwksGet,
+                issuerUrl,
+                externalApiClientId,
+                externalApiConsentId,
+                nonce,
+                supportsSca,
+                bankProfile.BankProfileEnum,
+                consent.ExternalApiUserId);
+            if (newExternalApiUserId != consent.ExternalApiUserId)
             {
-                string? newExternalApiUserId = await _grantPost.ValidateIdTokenAuthEndpoint(
-                    idToken,
-                    code,
-                    state,
-                    consentAuthGetCustomBehaviour?.IdTokenProcessingCustomBehaviour,
-                    jwksUri,
-                    customBehaviour?.JwksGet,
-                    bankTokenIssuerClaim,
-                    externalApiClientId,
-                    externalApiConsentId,
-                    nonce,
-                    supportsSca,
-                    bankProfile.BankProfileEnum,
-                    idTokenSubClaimType,
-                    consent.ExternalApiUserId);
-                if (newExternalApiUserId != consent.ExternalApiUserId)
-                {
-                    consent.UpdateExternalApiUserId(
-                        newExternalApiUserId,
-                        modified,
-                        modifiedBy);
-                }
+                consent.UpdateExternalApiUserId(
+                    newExternalApiUserId,
+                    modified,
+                    modifiedBy);
             }
         }
 
@@ -508,7 +488,7 @@ internal class AuthContextUpdate :
                 await _grantPost.PostAuthCodeGrantAsync(
                     code,
                     redirectUrl,
-                    bankTokenIssuerClaim,
+                    issuerUrl,
                     externalApiClientId,
                     clientSecret,
                     externalApiConsentId,
@@ -522,12 +502,12 @@ internal class AuthContextUpdate :
                     supportsSca,
                     expectRefreshToken,
                     bankProfile.BankProfileEnum,
-                    idTokenSubClaimType,
                     authContext.CodeVerifier,
                     jsonSerializerSettings,
                     consentAuthCodeGrantPostCustomBehaviour,
                     customBehaviour?.JwksGet,
-                    apiClient);
+                    apiClient,
+                    customBehaviour?.BaseIdTokenProcessingCustomBehaviour);
 
             // Cache new access token
             MemoryCacheEntryOptions cacheEntryOptions =

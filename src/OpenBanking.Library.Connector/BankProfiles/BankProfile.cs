@@ -112,11 +112,6 @@ public class BankConfigurationApiSettings
 
     public TokenEndpointAuthMethodSupportedValues TokenEndpointAuthMethod { get; set; } =
         TokenEndpointAuthMethodSupportedValues.TlsClientAuth;
-
-    /// <summary>
-    ///     ID token "sub" claim type.
-    /// </summary>
-    public IdTokenSubClaimType IdTokenSubClaimType { get; set; } = IdTokenSubClaimType.ConsentId;
 }
 
 public delegate string? GetFinancialId(bool useV4NotV3);
@@ -141,6 +136,8 @@ public class AccountAndTransactionApiSettings
         AccountAccessConsentTemplateExternalApiRequestAdjustments { get; set; } = x => x;
 
     public bool UseBalancesNotAccountEndpointInSecondSession { get; init; }
+
+    public int AccountAccessConsentPostCreateDelaySeconds { get; init; } = 0;
 }
 
 public class PaymentInitiationApiSettings
@@ -305,8 +302,6 @@ public class BankProfile
         new();
 
     public IApiClient ReplayApiClient { get; }
-
-    public required int AspspBrandId { get; init; }
 
     public bool AispUseV4ByDefault { get; init; } = false;
 

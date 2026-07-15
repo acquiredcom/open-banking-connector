@@ -11,7 +11,9 @@ public static class BankProfileExtensions
     public static BankGroup GetBankGroup(this BankProfileEnum bankProfileEnum) =>
         bankProfileEnum switch
         {
+#pragma warning disable CS0618
             BankProfileEnum.Barclays_Sandbox => BankGroup.Barclays,
+#pragma warning restore CS0618
             BankProfileEnum.Barclays_Personal => BankGroup.Barclays,
             BankProfileEnum.Barclays_Wealth => BankGroup.Barclays,
             BankProfileEnum.Barclays_Barclaycard => BankGroup.Barclays,
@@ -29,6 +31,7 @@ public static class BankProfileExtensions
             BankProfileEnum.Hsbc_UkKinetic => BankGroup.Hsbc,
             BankProfileEnum.Hsbc_UkPersonal => BankGroup.Hsbc,
             BankProfileEnum.Hsbc_HsbcNetUk => BankGroup.Hsbc,
+            BankProfileEnum.Hsbc_MAndS => BankGroup.Hsbc,
             BankProfileEnum.Lloyds_Sandbox => BankGroup.Lloyds,
             BankProfileEnum.Lloyds_LloydsPersonal => BankGroup.Lloyds,
             BankProfileEnum.Lloyds_LloydsBusiness => BankGroup.Lloyds,
@@ -41,6 +44,7 @@ public static class BankProfileExtensions
             BankProfileEnum.Monzo_Monzo => BankGroup.Monzo,
             BankProfileEnum.Monzo_Sandbox => BankGroup.Monzo,
             BankProfileEnum.Nationwide_Nationwide => BankGroup.Nationwide,
+            BankProfileEnum.Nationwide_VirginMerged => BankGroup.Nationwide,
             BankProfileEnum.NatWest_NatWestSandbox => BankGroup.NatWest,
             BankProfileEnum.NatWest_NatWest => BankGroup.NatWest,
             BankProfileEnum.NatWest_NatWestBankline => BankGroup.NatWest,
@@ -66,6 +70,8 @@ public static class BankProfileExtensions
             BankProfileEnum.Starling_Starling => BankGroup.Starling,
             BankProfileEnum.Tide_Tide => BankGroup.Tide,
             BankProfileEnum.Tsb_Tsb => BankGroup.Tsb,
+            BankProfileEnum.Wise_Wise => BankGroup.Wise,
+            BankProfileEnum.Zopa_Zopa => BankGroup.Zopa,
             _ => throw new ArgumentOutOfRangeException(nameof(bankProfileEnum), bankProfileEnum, null)
         };
 }

@@ -285,6 +285,8 @@ internal class
                 BankGroup.Starling => GetExistingRegistration<StarlingBank, StarlingRegistrationGroup>,
                 BankGroup.Tide => GetExistingRegistration<TideBank, TideRegistrationGroup>,
                 BankGroup.Tsb => GetExistingRegistration<TsbBank, TsbRegistrationGroup>,
+                BankGroup.Wise => GetExistingRegistration<WiseBank, WiseRegistrationGroup>,
+                BankGroup.Zopa => GetExistingRegistration<ZopaBank, ZopaRegistrationGroup>,
                 _ => throw new ArgumentOutOfRangeException()
             };
         (BankRegistrationEntity? existingGroupRegistration,
@@ -1259,9 +1261,28 @@ internal class
         {
             var optionsDict = new Dictionary<JsonConverterLabel, int>();
 
+
+            DateTimeOffsetUnixConverterEnum? issuedAtClaimResponseJsonConverter =
+                bankRegistrationPostCustomBehaviour
+                    .IssuedAtClaimResponseJsonConverter;
+            DateTimeOffsetUnixConverterEnum? expirationTimeClaimResponseJsonConverter =
+                bankRegistrationPostCustomBehaviour
+                    .ExpirationTimeClaimResponseJsonConverter;
             DateTimeOffsetUnixConverterEnum? clientIdIssuedAtClaimResponseJsonConverter =
                 bankRegistrationPostCustomBehaviour
                     .ClientIdIssuedAtClaimResponseJsonConverter;
+            if (issuedAtClaimResponseJsonConverter is not null)
+            {
+                optionsDict.Add(
+                    JsonConverterLabel.DcrRegIssuedAt,
+                    (int) issuedAtClaimResponseJsonConverter);
+            }
+            if (expirationTimeClaimResponseJsonConverter is not null)
+            {
+                optionsDict.Add(
+                    JsonConverterLabel.DcrRegExpirationTime,
+                    (int) expirationTimeClaimResponseJsonConverter);
+            }
             if (clientIdIssuedAtClaimResponseJsonConverter is not null)
             {
                 optionsDict.Add(
