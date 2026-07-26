@@ -12,6 +12,8 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}-web-app
   IMAGE_TAG: ${{ github.event.inputs.version}}
+  GCP_REGISTRY: europe-west2-docker.pkg.dev
+  GCP_IMAGE_NAME: prj-c-prd-infra-cicd-iytq/ar-c-prd-euwe2-docker/open-banking-connector-web-app
 
 jobs:
 
@@ -20,6 +22,7 @@ jobs:
     
     permissions:
       contents: read
+      id-token: write
       packages: write
 
     steps:
@@ -33,11 +36,28 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
+    - name: Authenticate to Google Cloud
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        token_format: access_token
+        workload_identity_provider: ${{ secrets.WIF_PROVIDER_NAME }}
+        service_account: ${{ secrets.SERVICE_ACCOUNT_EMAIL }}
+
+    - name: Log in to Artifact Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.GCP_REGISTRY }}
+        username: oauth2accesstoken
+        password: ${{ steps.auth.outputs.access_token }}
+
     - name: Extract metadata (tags, labels) for Docker
       id: meta
       uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
       with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        images: |
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          ${{ env.GCP_REGISTRY }}/${{ env.GCP_IMAGE_NAME }}
         tags: |
           type=semver,pattern={{version}},value=${{ env.IMAGE_TAG }}
         labels: |
