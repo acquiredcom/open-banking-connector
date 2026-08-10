@@ -75,8 +75,45 @@ jobs:
           fi
           echo "exists=$exists" >> "$GITHUB_OUTPUT"
 
-      - name: Merge upstream
+      - name: Check whether the merge would change workflow files
         if: steps.upstream.outputs.count != '0' && steps.existing.outputs.exists == 'false'
+        id: guard
+        env:
+          SYNC_BRANCH: ${{ steps.upstream.outputs.branch }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+        run: |
+          git merge-tree --write-tree --name-only HEAD "$UPSTREAM_SHA" > "${RUNNER_TEMP}/merge-tree.txt" || true
+          tree=$(head -1 "${RUNNER_TEMP}/merge-tree.txt")
+
+          changed=$(git diff --name-only HEAD "$tree" -- .github/workflows)
+          blocked=false
+
+          if [ -n "$changed" ]; then
+            blocked=true
+            echo "::warning::Sync stopped: GITHUB_TOKEN cannot push changes to .github/workflows. Merge this sync locally."
+            {
+              echo "### Sync stopped before merging"
+              echo
+              echo "Merging \`${UPSTREAM_REPO}@${UPSTREAM_REF}\` would change these workflow files:"
+              echo
+              echo "$changed" | sed 's/^/- `/; s/$/`/'
+              echo
+              echo "\`GITHUB_TOKEN\` is a GitHub App token, and GitHub refuses App tokens creating or updating anything under \`.github/workflows\` without the \`workflows\` permission, which cannot be requested from a workflow. No branch was created and nothing was committed. Merge this sync locally instead:"
+              echo
+              echo '```'
+              echo "git fetch upstream"
+              echo "git switch -c $SYNC_BRANCH ${BASE_BRANCH}"
+              echo "git merge --no-ff -m 'chore: merge ${UPSTREAM_REPO}@${UPSTREAM_REF} to sync fork' upstream/${UPSTREAM_REF}"
+              echo "# resolve any conflicts, then"
+              echo "git push -u origin HEAD"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          echo "blocked=$blocked" >> "$GITHUB_OUTPUT"
+
+      - name: Merge upstream
+        if: steps.guard.outputs.blocked == 'false'
         id: merge
         env:
           SYNC_BRANCH: ${{ steps.upstream.outputs.branch }}
