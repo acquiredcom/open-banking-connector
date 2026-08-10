@@ -1,0 +1,157 @@
+name: Sync fork with upstream
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: "Upstream branch to merge"
+        required: false
+        default: master
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: finlabsuk/open-banking-connector
+  UPSTREAM_REF: ${{ github.event.inputs.upstream_ref || 'master' }}
+  BASE_BRANCH: master
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.BASE_BRANCH }}
+          fetch-depth: 0
+
+      - name: Configure Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream
+        id: upstream
+        run: |
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch --no-tags upstream "${UPSTREAM_REF}"
+
+          sha=$(git rev-parse FETCH_HEAD)
+          count=$(git rev-list --count "HEAD..${sha}")
+
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "branch=chore/sync-upstream-$(git rev-parse --short "$sha")" >> "$GITHUB_OUTPUT"
+
+          if [ "$count" = "0" ]; then
+            echo "### Already in sync" >> "$GITHUB_STEP_SUMMARY"
+            echo "\`${UPSTREAM_REPO}@${UPSTREAM_REF}\` has no commits that \`${BASE_BRANCH}\` is missing." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Check for an existing sync branch
+        if: steps.upstream.outputs.count != '0'
+        id: existing
+        env:
+          SYNC_BRANCH: ${{ steps.upstream.outputs.branch }}
+        run: |
+          exists=false
+          if git ls-remote --exit-code --heads origin "$SYNC_BRANCH" >/dev/null 2>&1; then
+            exists=true
+            url=$(gh pr list --head "$SYNC_BRANCH" --state open --json url --jq '.[0].url // empty')
+            {
+              echo "### Sync already in progress"
+              echo "Branch \`$SYNC_BRANCH\` already exists on the fork. ${url:-No open pull request found for it.}"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "exists=$exists" >> "$GITHUB_OUTPUT"
+
+      - name: Merge upstream
+        if: steps.upstream.outputs.count != '0' && steps.existing.outputs.exists == 'false'
+        id: merge
+        env:
+          SYNC_BRANCH: ${{ steps.upstream.outputs.branch }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+        run: |
+          git switch -c "$SYNC_BRANCH"
+
+          conflicted=false
+          git merge --no-ff --no-edit -m "chore: merge ${UPSTREAM_REPO}@${UPSTREAM_REF} to sync fork" "$UPSTREAM_SHA" || conflicted=true
+
+          if [ "$conflicted" = "true" ]; then
+            git diff --name-only --diff-filter=U > "${RUNNER_TEMP}/conflicts.txt"
+            git add -A
+            git commit --no-edit
+          fi
+
+          echo "conflicted=$conflicted" >> "$GITHUB_OUTPUT"
+
+      - name: Push sync branch
+        if: steps.merge.outcome == 'success'
+        env:
+          SYNC_BRANCH: ${{ steps.upstream.outputs.branch }}
+        run: git push origin "$SYNC_BRANCH"
+
+      - name: Open pull request
+        if: steps.merge.outcome == 'success'
+        env:
+          SYNC_BRANCH: ${{ steps.upstream.outputs.branch }}
+          UPSTREAM_SHA: ${{ steps.upstream.outputs.sha }}
+          CONFLICTED: ${{ steps.merge.outputs.conflicted }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "Merges \`${UPSTREAM_REPO}@${UPSTREAM_REF}\` into the fork so it stays current with upstream, keeping this fork's own CI changes on top. Opened by the [Sync fork with upstream](${RUN_URL}) workflow."
+            echo
+            echo "Merge this with a merge commit rather than squash or rebase. Squashing rewrites the upstream commits and future syncs would then replay them as conflicts."
+            echo
+            echo "## Upstream commits"
+            echo
+            git log --reverse --no-merges --pretty='- %h %s' "HEAD^1..${UPSTREAM_SHA}"
+          } > "${RUNNER_TEMP}/pr-body.md"
+
+          args=()
+          if [ "$CONFLICTED" = "true" ]; then
+            args+=(--draft)
+            {
+              echo
+              echo "## Unresolved conflicts"
+              echo
+              echo "The merge did not apply cleanly, so the conflicted state is committed on this branch as-is and the pull request is a draft. Do not merge until these are resolved:"
+              echo
+              sed 's/^/- `/; s/$/`/' "${RUNNER_TEMP}/conflicts.txt"
+              echo
+              echo '```'
+              echo "git fetch origin"
+              echo "git switch $SYNC_BRANCH"
+              echo "# resolve the files listed above, then"
+              echo "git add -A"
+              echo "git commit -m 'chore: resolve upstream sync conflicts'"
+              echo "git push"
+              echo '```'
+            } >> "${RUNNER_TEMP}/pr-body.md"
+          fi
+
+          url=$(gh pr create \
+            --base "$BASE_BRANCH" \
+            --head "$SYNC_BRANCH" \
+            --title "chore: sync fork with ${UPSTREAM_REPO}@${UPSTREAM_REF}" \
+            --body-file "${RUNNER_TEMP}/pr-body.md" \
+            "${args[@]}")
+
+          {
+            echo "### Sync pull request opened"
+            echo "$url"
+            if [ "$CONFLICTED" = "true" ]; then
+              echo "Opened as a draft: the merge has unresolved conflicts."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
