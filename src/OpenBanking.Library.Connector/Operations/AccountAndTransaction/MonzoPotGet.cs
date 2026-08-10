@@ -246,7 +246,7 @@ internal class
                 : "GET {AispBaseUrl}/accounts/{AccountId}/pots",
             BankProfile = bankProfile.BankProfileEnum
         };
-        (ReadMonzoPot externalApiResponse, string? xFapiInteractionId,
+        (ReadMonzoPot externalApiResponse, ExternalApiResponseHeaders responseHeaders,
                 IList<IFluentResponseInfoOrWarningMessage> newNonErrorMessages) =
             await apiRequests.GetAsync(
                 externalApiUrl,
@@ -276,22 +276,30 @@ internal class
         }
         if (externalApiResponse.Links.Prev is not null)
         {
-            externalApiResponse.Links.Prev = linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Prev);
+            externalApiResponse.Links.Prev =
+                linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Prev);
         }
         if (externalApiResponse.Links.Next is not null)
         {
-            externalApiResponse.Links.Next = linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Next);
+            externalApiResponse.Links.Next =
+                linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Next);
         }
         if (externalApiResponse.Links.Last is not null)
         {
-            externalApiResponse.Links.Last = linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Last);
+            externalApiResponse.Links.Last =
+                linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Last);
         }
 
         // Create response
         var response = new MonzoPotsResponse
         {
             ExternalApiResponse = externalApiResponse,
-            ExternalApiResponseInfo = new ExternalApiResponseInfo { XFapiInteractionId = xFapiInteractionId }
+            ExternalApiResponseInfo = new ExternalApiResponseInfo
+            {
+                XFapiInteractionId = responseHeaders.XFapiInteractionId,
+                RateLimitPolicy = responseHeaders.RateLimitPolicy,
+                RateLimit = responseHeaders.RateLimit
+            }
         };
 
         return (response, nonErrorMessages);

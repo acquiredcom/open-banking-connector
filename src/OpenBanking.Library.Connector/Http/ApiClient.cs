@@ -39,18 +39,24 @@ public class ApiClient(
     /// <param name="tppReportingMetrics"></param>
     /// <param name="clientCertificates"></param>
     /// <param name="serverCertificateValidator"></param>
+    /// <param name="timeoutSeconds">
+    ///     Overall per-request timeout. Not yet exposed via HttpClientSettings/production
+    ///     configuration - currently only set directly by tests. Defaults to HttpClient's own
+    ///     default (100 seconds).
+    /// </param>
     public ApiClient(
         IInstrumentationClient instrumentationClient,
         int pooledConnectionLifetimeSeconds,
         TppReportingMetrics tppReportingMetrics,
         IList<X509Certificate2>? clientCertificates = null,
-        IServerCertificateValidator? serverCertificateValidator = null) : this(
+        IServerCertificateValidator? serverCertificateValidator = null,
+        int timeoutSeconds = 100) : this(
         new HttpClientWrapper(
-            new HttpClient(
-                CreatePrimaryHandler(
-                    pooledConnectionLifetimeSeconds,
-                    clientCertificates,
-                    serverCertificateValidator))),
+            CreateHttpClient(
+                pooledConnectionLifetimeSeconds,
+                clientCertificates,
+                serverCertificateValidator,
+                timeoutSeconds)),
         instrumentationClient,
         tppReportingMetrics) { }
 
@@ -65,7 +71,7 @@ public class ApiClient(
         DateParseHandling = DateParseHandling.None
     };
 
-    public async Task<(T response, string? xFapiInteractionId)> SendExpectingJsonResponseAsync<T>(
+    public async Task<(T response, ExternalApiResponseHeaders responseHeaders)> SendExpectingJsonResponseAsync<T>(
         HttpRequestMessage request,
         string? requestContentForLog,
         TppReportingRequestInfo? tppReportingRequestInfo,
@@ -75,7 +81,7 @@ public class ApiClient(
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        (int statusCode, string? responseBody, string? xFapiInteractionId) =
+        (int statusCode, string? responseBody, ExternalApiResponseHeaders responseHeaders) =
             await SendInnerAsync(request, requestContentForLog, tppReportingRequestInfo);
 
         // Check body not null
@@ -97,7 +103,7 @@ public class ApiClient(
                 request.Method.ToString(),
                 request.RequestUri!.ToString(),
                 responseBody,
-                xFapiInteractionId,
+                responseHeaders.XFapiInteractionId,
                 ex.Message,
                 exposeSuccessResponseBodyInError);
         }
@@ -107,7 +113,7 @@ public class ApiClient(
             throw new HttpRequestException("Could not de-serialise HTTP body");
         }
 
-        return (responseBodyTyped, xFapiInteractionId);
+        return (responseBodyTyped, responseHeaders);
     }
 
     public async Task SendExpectingNoResponseAsync(
@@ -151,10 +157,11 @@ public class ApiClient(
         _httpClient.Dispose();
     }
 
-    private static SocketsHttpHandler CreatePrimaryHandler(
+    private static HttpClient CreateHttpClient(
         int pooledConnectionLifetimeSeconds,
         IList<X509Certificate2>? clientCertificates,
-        IServerCertificateValidator? serverCertificateValidator)
+        IServerCertificateValidator? serverCertificateValidator,
+        int timeoutSeconds)
     {
         var clientHandler = new SocketsHttpHandler
         {
@@ -209,13 +216,14 @@ public class ApiClient(
         }
 
         clientHandler.SslOptions = sslClientAuthenticationOptions;
-        return clientHandler;
+        return new HttpClient(clientHandler) { Timeout = TimeSpan.FromSeconds(timeoutSeconds) };
     }
 
-    private async Task<(int statusCode, string? responseBody, string? xFapiInteractionId)> SendInnerAsync(
-        HttpRequestMessage request,
-        string? requestContentForLog,
-        TppReportingRequestInfo? tppReportingRequestInfo)
+    private async Task<(int statusCode, string? responseBody, ExternalApiResponseHeaders responseHeaders)>
+        SendInnerAsync(
+            HttpRequestMessage request,
+            string? requestContentForLog,
+            TppReportingRequestInfo? tppReportingRequestInfo)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -245,7 +253,19 @@ public class ApiClient(
                 ex,
                 stopWatch.Elapsed);
 
-            if (ex is HttpIOException httpIoException)
+            // HttpClient uses HttpCompletionOption.ResponseContentRead below, so a body-copy
+            // failure (e.g. the connection dropping mid-response, short of a declared
+            // Content-Length) surfaces as an HttpIOException wrapped inside an outer
+            // HttpRequestException from HttpContent.LoadIntoBufferAsync, rather than as a bare
+            // HttpIOException. Match both shapes so this mapping isn't silently skipped for what
+            // is, in practice, the more common manifestation.
+            HttpIOException? httpIoException = ex switch
+            {
+                HttpIOException direct => direct,
+                { InnerException: HttpIOException inner } => inner,
+                _ => null
+            };
+            if (httpIoException is not null)
             {
                 throw new HttpResponseException(
                     new ExternalApiHttpRequestIoError(requestMethod, requestUri, httpIoException.HttpRequestError));
@@ -267,6 +287,30 @@ public class ApiClient(
         {
             xFapiInteractionId = values.First();
         }
+        IReadOnlyList<string>? rateLimitPolicy = response.Headers.TryGetValues(
+            "RateLimit-Policy",
+            out IEnumerable<string>? rateLimitPolicyValues)
+            ? rateLimitPolicyValues.ToList()
+            : null;
+        IReadOnlyList<string>? rateLimit = response.Headers.TryGetValues(
+            "RateLimit",
+            out IEnumerable<string>? rateLimitValues)
+            ? rateLimitValues.ToList()
+            : null;
+        // Retry-After (seconds) is typically only sent with 429 Too Many Requests, but no harm reading it
+        // regardless of status code.
+        int? retryAfterSeconds = response.Headers.RetryAfter switch
+        {
+            { Delta: { } retryAfterDelta } => (int) retryAfterDelta.TotalSeconds,
+            { Date: { } retryAfterDate } => (int) Math.Max(0, (retryAfterDate - DateTimeOffset.UtcNow).TotalSeconds),
+            _ => null
+        };
+        var responseHeaders = new ExternalApiResponseHeaders
+        {
+            XFapiInteractionId = xFapiInteractionId,
+            RateLimitPolicy = rateLimitPolicy,
+            RateLimit = rateLimit
+        };
         var statusCode = (int) response.StatusCode;
         bool isSuccess = response.IsSuccessStatusCode;
         string? responseBody;
@@ -326,10 +370,13 @@ public class ApiClient(
                     requestUri,
                     statusCode,
                     parsedResponseBody,
-                    xFapiInteractionId));
+                    xFapiInteractionId,
+                    retryAfterSeconds,
+                    rateLimitPolicy,
+                    rateLimit));
         }
 
-        return (statusCode, responseBody, xFapiInteractionId);
+        return (statusCode, responseBody, responseHeaders);
     }
 
     private void LogAndUpdateMetricsForFailure(
