@@ -51,7 +51,7 @@ jobs:
 
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "count=$count" >> "$GITHUB_OUTPUT"
-          echo "branch=chore/sync-upstream-$(git rev-parse --short "$sha")" >> "$GITHUB_OUTPUT"
+          echo "branch=chore/sync-upstream-$(git rev-parse --short=12 "$sha")" >> "$GITHUB_OUTPUT"
 
           if [ "$count" = "0" ]; then
             echo "### Already in sync" >> "$GITHUB_STEP_SUMMARY"
@@ -85,7 +85,7 @@ jobs:
           git switch -c "$SYNC_BRANCH"
 
           conflicted=false
-          git merge --no-ff --no-edit -m "chore: merge ${UPSTREAM_REPO}@${UPSTREAM_REF} to sync fork" "$UPSTREAM_SHA" || conflicted=true
+          git merge --no-ff -m "chore: merge ${UPSTREAM_REPO}@${UPSTREAM_REF} to sync fork" "$UPSTREAM_SHA" || conflicted=true
 
           if [ "$conflicted" = "true" ]; then
             git diff --name-only --diff-filter=U > "${RUNNER_TEMP}/conflicts.txt"
