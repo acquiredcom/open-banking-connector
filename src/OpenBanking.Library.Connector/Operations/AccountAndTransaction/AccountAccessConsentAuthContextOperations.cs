@@ -158,7 +158,7 @@ internal class
             };
             JsonSerializerSettings? responseJsonSerializerSettings = null;
             AccountAndTransactionModelsPublic.OBReadConsentResponse1 externalApiResponse;
-            string? xFapiInteractionId;
+            ExternalApiResponseHeaders responseHeaders;
             IList<IFluentResponseInfoOrWarningMessage> newNonErrorMessages;
             switch (accountAndTransactionApi.ApiVersion)
             {
@@ -175,7 +175,7 @@ internal class
                                 ccGrantAccessToken,
                                 _instrumentationClient));
                     (AccountAndTransactionModelsV3p1p11.OBReadConsentResponse1 externalApiResponseV3,
-                            xFapiInteractionId,
+                            responseHeaders,
                             newNonErrorMessages) =
                         await apiRequestsV3.GetAsync(
                             externalApiUrl,
@@ -200,7 +200,7 @@ internal class
                                 ccGrantAccessToken,
                                 _instrumentationClient));
                     (externalApiResponse,
-                            xFapiInteractionId,
+                            responseHeaders,
                             newNonErrorMessages) =
                         await apiRequests.GetAsync(
                             externalApiUrl,
@@ -216,9 +216,9 @@ internal class
             }
             nonErrorMessages.AddRange(newNonErrorMessages);
 
-            AccountAndTransactionModelsPublic.Data5Status status = externalApiResponse.Data.Status;
+            AccountAndTransactionModelsPublic.OBInternalConsentStatus1Code status = externalApiResponse.Data.Status;
             reAuthNotInitialAuth =
-                status is not AccountAndTransactionModelsPublic.Data5Status.AWAU;
+                status is not AccountAndTransactionModelsPublic.OBInternalConsentStatus1Code.AWAU;
         }
 
         string scope = customBehaviour?.AccountAccessConsentAuthGet?.Scope ?? "accounts";

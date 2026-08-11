@@ -208,7 +208,7 @@ internal class DomesticVrp :
 #pragma warning restore SYSLIB0050
         }
         VariableRecurringPaymentsModelsPublic.OBDomesticVRPResponse externalApiResponse;
-        string? xFapiInteractionId;
+        ExternalApiResponseHeaders responseHeaders;
         IList<IFluentResponseInfoOrWarningMessage> newNonErrorMessages;
         switch (variableRecurringPaymentsApi.ApiVersion)
         {
@@ -229,7 +229,7 @@ internal class DomesticVrp :
                             _instrumentationClient,
                             softwareStatement,
                             obSealKey));
-                (VariableRecurringPaymentsModelsV3p1p11.OBDomesticVRPResponse externalApiResponseV3, xFapiInteractionId,
+                (VariableRecurringPaymentsModelsV3p1p11.OBDomesticVRPResponse externalApiResponseV3, responseHeaders,
                         newNonErrorMessages) =
                     await apiRequestsV3.PostAsync(
                         externalApiUrl,
@@ -259,7 +259,7 @@ internal class DomesticVrp :
                             _instrumentationClient,
                             softwareStatement,
                             obSealKey));
-                (externalApiResponse, xFapiInteractionId,
+                (externalApiResponse, responseHeaders,
                         newNonErrorMessages) =
                     await apiRequests.PostAsync(
                         externalApiUrl,
@@ -276,7 +276,12 @@ internal class DomesticVrp :
                     $"Variable Recurring Payments API version {variableRecurringPaymentsApi.ApiVersion} not supported.");
         }
         nonErrorMessages.AddRange(newNonErrorMessages);
-        var externalApiResponseInfo = new ExternalApiResponseInfo { XFapiInteractionId = xFapiInteractionId };
+        var externalApiResponseInfo = new ExternalApiResponseInfo
+        {
+            XFapiInteractionId = responseHeaders.XFapiInteractionId,
+            RateLimitPolicy = responseHeaders.RateLimitPolicy,
+            RateLimit = responseHeaders.RateLimit
+        };
         string externalApiId = externalApiResponse.Data.DomesticVRPId;
         if (!vrpUseV4)
         {
@@ -296,27 +301,31 @@ internal class DomesticVrp :
             transformedLinkUrlWithoutQuery,
             domesticVrpPostCustomBehaviour?.ResponseLinksMayHaveIncorrectUrlBeforeQuery ?? false,
             false);
-        externalApiResponse.Links.Self =
-            linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Self);
-        if (externalApiResponse.Links.First is not null)
+        // Links is optional as of v4.0.1 (was required in v4.0); skip transformation if bank omitted it.
+        if (externalApiResponse.Links is not null)
         {
-            externalApiResponse.Links.First =
-                linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.First);
-        }
-        if (externalApiResponse.Links.Prev is not null)
-        {
-            externalApiResponse.Links.Prev =
-                linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Prev);
-        }
-        if (externalApiResponse.Links.Next is not null)
-        {
-            externalApiResponse.Links.Next =
-                linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Next);
-        }
-        if (externalApiResponse.Links.Last is not null)
-        {
-            externalApiResponse.Links.Last =
-                linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Last);
+            externalApiResponse.Links.Self =
+                linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Self);
+            if (externalApiResponse.Links.First is not null)
+            {
+                externalApiResponse.Links.First =
+                    linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.First);
+            }
+            if (externalApiResponse.Links.Prev is not null)
+            {
+                externalApiResponse.Links.Prev =
+                    linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Prev);
+            }
+            if (externalApiResponse.Links.Next is not null)
+            {
+                externalApiResponse.Links.Next =
+                    linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Next);
+            }
+            if (externalApiResponse.Links.Last is not null)
+            {
+                externalApiResponse.Links.Last =
+                    linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Last);
+            }
         }
 
         // Create response
@@ -403,7 +412,7 @@ internal class DomesticVrp :
                     optionsDict);
         }
         VariableRecurringPaymentsModelsPublic.OBDomesticVRPResponse externalApiResponse;
-        string? xFapiInteractionId;
+        ExternalApiResponseHeaders responseHeaders;
         IList<IFluentResponseInfoOrWarningMessage> newNonErrorMessages;
         switch (variableRecurringPaymentsApi.ApiVersion)
         {
@@ -412,7 +421,7 @@ internal class DomesticVrp :
                     new ApiGetRequests<VariableRecurringPaymentsModelsV3p1p11.OBDomesticVRPResponse,
                         VariableRecurringPaymentsModelsV3p1p11.OBDomesticVRPResponse>(
                         new ApiGetRequestProcessor(bankFinancialId, ccGrantAccessToken));
-                (VariableRecurringPaymentsModelsV3p1p11.OBDomesticVRPResponse externalApiResponseV3, xFapiInteractionId,
+                (VariableRecurringPaymentsModelsV3p1p11.OBDomesticVRPResponse externalApiResponseV3, responseHeaders,
                         newNonErrorMessages) =
                     await apiRequestsV3.GetAsync(
                         externalApiUrl,
@@ -429,7 +438,7 @@ internal class DomesticVrp :
                     new ApiGetRequests<VariableRecurringPaymentsModelsPublic.OBDomesticVRPResponse,
                         VariableRecurringPaymentsModelsPublic.OBDomesticVRPResponse>(
                         new ApiGetRequestProcessor(bankFinancialId, ccGrantAccessToken));
-                (externalApiResponse, xFapiInteractionId, newNonErrorMessages) =
+                (externalApiResponse, responseHeaders, newNonErrorMessages) =
                     await apiRequests.GetAsync(
                         externalApiUrl,
                         readParams.ExtraHeaders,
@@ -443,7 +452,12 @@ internal class DomesticVrp :
                     $"Variable Recurring Payments API version {variableRecurringPaymentsApi.ApiVersion} not supported.");
         }
         nonErrorMessages.AddRange(newNonErrorMessages);
-        var externalApiResponseInfo = new ExternalApiResponseInfo { XFapiInteractionId = xFapiInteractionId };
+        var externalApiResponseInfo = new ExternalApiResponseInfo
+        {
+            XFapiInteractionId = responseHeaders.XFapiInteractionId,
+            RateLimitPolicy = responseHeaders.RateLimitPolicy,
+            RateLimit = responseHeaders.RateLimit
+        };
         if (!vrpUseV4)
         {
             externalApiResponse.Risk.AdjustAfterReceiveFromBank();
@@ -460,27 +474,31 @@ internal class DomesticVrp :
             transformedLinkUrlWithoutQuery,
             domesticVrpGetCustomBehaviour?.ResponseLinksMayHaveIncorrectUrlBeforeQuery ?? false,
             false);
-        externalApiResponse.Links.Self =
-            linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Self);
-        if (externalApiResponse.Links.First is not null)
+        // Links is optional as of v4.0.1 (was required in v4.0); skip transformation if bank omitted it.
+        if (externalApiResponse.Links is not null)
         {
-            externalApiResponse.Links.First =
-                linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.First);
-        }
-        if (externalApiResponse.Links.Prev is not null)
-        {
-            externalApiResponse.Links.Prev =
-                linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Prev);
-        }
-        if (externalApiResponse.Links.Next is not null)
-        {
-            externalApiResponse.Links.Next =
-                linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Next);
-        }
-        if (externalApiResponse.Links.Last is not null)
-        {
-            externalApiResponse.Links.Last =
-                linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Last);
+            externalApiResponse.Links.Self =
+                linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Self);
+            if (externalApiResponse.Links.First is not null)
+            {
+                externalApiResponse.Links.First =
+                    linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.First);
+            }
+            if (externalApiResponse.Links.Prev is not null)
+            {
+                externalApiResponse.Links.Prev =
+                    linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Prev);
+            }
+            if (externalApiResponse.Links.Next is not null)
+            {
+                externalApiResponse.Links.Next =
+                    linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Next);
+            }
+            if (externalApiResponse.Links.Last is not null)
+            {
+                externalApiResponse.Links.Last =
+                    linksUrlOperations.ValidateAndTransformUrl(externalApiResponse.Links.Last);
+            }
         }
 
         // Create response
@@ -559,7 +577,7 @@ internal class DomesticVrp :
         };
         JsonSerializerSettings? responseJsonSerializerSettings = null;
         VariableRecurringPaymentsModelsPublic.OBDomesticVRPDetails externalApiResponse;
-        string? xFapiInteractionId;
+        ExternalApiResponseHeaders responseHeaders;
         IList<IFluentResponseInfoOrWarningMessage> newNonErrorMessages;
         switch (variableRecurringPaymentsApi.ApiVersion)
         {
@@ -568,7 +586,7 @@ internal class DomesticVrp :
                     new ApiGetRequests<VariableRecurringPaymentsModelsV3p1p11.OBDomesticVRPDetails,
                         VariableRecurringPaymentsModelsV3p1p11.OBDomesticVRPDetails>(
                         new ApiGetRequestProcessor(bankFinancialId, ccGrantAccessToken));
-                (VariableRecurringPaymentsModelsV3p1p11.OBDomesticVRPDetails externalApiResponseV3, xFapiInteractionId,
+                (VariableRecurringPaymentsModelsV3p1p11.OBDomesticVRPDetails externalApiResponseV3, responseHeaders,
                         newNonErrorMessages) =
                     await apiRequestsV3.GetAsync(
                         externalApiUrl,
@@ -585,7 +603,7 @@ internal class DomesticVrp :
                     new ApiGetRequests<VariableRecurringPaymentsModelsPublic.OBDomesticVRPDetails,
                         VariableRecurringPaymentsModelsPublic.OBDomesticVRPDetails>(
                         new ApiGetRequestProcessor(bankFinancialId, ccGrantAccessToken));
-                (externalApiResponse, xFapiInteractionId, newNonErrorMessages) =
+                (externalApiResponse, responseHeaders, newNonErrorMessages) =
                     await apiRequests.GetAsync(
                         externalApiUrl,
                         readParams.ExtraHeaders,
@@ -599,7 +617,12 @@ internal class DomesticVrp :
                     $"Variable Recurring Payments API version {variableRecurringPaymentsApi.ApiVersion} not supported.");
         }
         nonErrorMessages.AddRange(newNonErrorMessages);
-        var externalApiResponseInfo = new ExternalApiResponseInfo { XFapiInteractionId = xFapiInteractionId };
+        var externalApiResponseInfo = new ExternalApiResponseInfo
+        {
+            XFapiInteractionId = responseHeaders.XFapiInteractionId,
+            RateLimitPolicy = responseHeaders.RateLimitPolicy,
+            RateLimit = responseHeaders.RateLimit
+        };
 
         // No links to transform
 
