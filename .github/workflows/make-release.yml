@@ -194,29 +194,9 @@ jobs:
             --verify-tag \
             $prerelease_flag
 
-  deploy-docs:
-    needs: [validate, tag-and-release]
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0 # full history needed by mkdocs-git-revision-date-localized-plugin
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.x"
-
-      - name: Install MkDocs and plugins
-        run: python -m pip install --upgrade pip && python -m pip install mkdocs-material mkdocs-git-revision-date-localized-plugin mkdocs-render-swagger-plugin
-
-      - name: Deploy documentation to GitHub Pages
-        run: |
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
-          mkdocs gh-deploy --force --ignore-version -m "Deploy docs for web-app/${VERSION}"
+  # FORK NOTE: upstream's deploy-docs job is deliberately omitted here.
+  # We run this workflow to publish images to our GCP Artifact Registry, not to
+  # publish upstream's documentation. The job would push a gh-pages branch to this
+  # fork on every release, which serves nothing because Pages is not enabled, and
+  # mkdocs.yml still points repo_url at finlabsuk.
+  # On an upstream sync that reintroduces it, drop it again rather than merging it in.
