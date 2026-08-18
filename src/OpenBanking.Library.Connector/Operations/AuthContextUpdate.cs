@@ -328,10 +328,7 @@ internal class AuthContextUpdate :
         bool supportsSca = bankProfile.SupportsSca;
         string issuerUrl = bankProfile.IssuerUrl;
         CustomBehaviourClass? customBehaviour = bankProfile.CustomBehaviour;
-        string redirectUrl = softwareStatement.GetRedirectUri(
-            defaultResponseMode,
-            bankRegistration.DefaultFragmentRedirectUri,
-            bankRegistration.DefaultQueryRedirectUri);
+        string redirectUri = authContext.RedirectUri;
         OAuth2ResponseType responseType = bankProfile.DefaultResponseType;
         bool useOpenIdConnect = bankProfile.UseOpenIdConnect;
 
@@ -366,11 +363,11 @@ internal class AuthContextUpdate :
         OBSealKey obSealKey =
             (await _obSealCertificateMethods.GetValue(softwareStatement.DefaultObSealCertificateId)).ObSealKey;
 
-        // Validate redirect URL
-        if (request.RedirectUrl is not null &&
-            !string.Equals(request.RedirectUrl, redirectUrl))
+        // Validate redirect URI
+        if (request.RedirectUri is not null &&
+            !string.Equals(request.RedirectUri, redirectUri))
         {
-            throw new Exception("Redirect URL supplied does not match that which was expected");
+            throw new Exception("Redirect URI supplied does not match that which was expected");
         }
 
         // Validate response mode
@@ -399,9 +396,11 @@ internal class AuthContextUpdate :
 
         // Validate ID token including nonce
         DateTimeOffset modified = _timeProvider.GetUtcNow();
+        Acr? acr = null;
+        DateTimeOffset? authTime = null;
         if (idToken is not null)
         {
-            string? newExternalApiUserId = await _grantPost.ValidateIdTokenAuthEndpoint(
+            (string? newExternalApiUserId, acr, authTime) = await _grantPost.ValidateIdTokenAuthEndpoint(
                 idToken,
                 code,
                 state,
@@ -428,11 +427,14 @@ internal class AuthContextUpdate :
         // Valid ID token means nonce has been validated so we delete auth context to ensure nonce can only be used once
         authContext.UpdateIsDeleted(true, modified, modifiedBy);
 
-        // Update consent as auth has been successful (i.e. inputs validated)
+        // Update consent as auth has been successful. Without a front-channel ID token, ACR/auth_time
+        // are unknown here (set to null) and set later from the token endpoint ID token if present.
         consent.UpdateAuthContext(
             authContext.State,
             nonce,
             authContext.CodeVerifier,
+            acr,
+            authTime,
             modified,
             modifiedBy);
 
@@ -484,10 +486,10 @@ internal class AuthContextUpdate :
             {
                 scope = "openid " + scope;
             }
-            TokenEndpointResponse tokenEndpointResponse =
+            (TokenEndpointResponse tokenEndpointResponse, Acr? tokenAcr, DateTimeOffset? tokenAuthTime) =
                 await _grantPost.PostAuthCodeGrantAsync(
                     code,
-                    redirectUrl,
+                    redirectUri,
                     issuerUrl,
                     externalApiClientId,
                     clientSecret,
@@ -508,6 +510,17 @@ internal class AuthContextUpdate :
                     customBehaviour?.JwksGet,
                     apiClient,
                     customBehaviour?.BaseIdTokenProcessingCustomBehaviour);
+
+            // For auth code flow (no front-channel ID token), set ACR/auth_time from token endpoint ID token if present.
+            if (idToken is null &&
+                (tokenAcr is not null || tokenAuthTime is not null))
+            {
+                consent.UpdateAuthContextAcrAndAuthTime(
+                    tokenAcr,
+                    tokenAuthTime,
+                    modified,
+                    modifiedBy);
+            }
 
             // Cache new access token
             MemoryCacheEntryOptions cacheEntryOptions =
