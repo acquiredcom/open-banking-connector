@@ -174,8 +174,8 @@ jobs:
           title_msg="$TITLE"
           [[ "$title_msg" == *. ]] || title_msg="${title_msg}."
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
           git tag -a "web-app/${VERSION}" -m "$title_msg" -m "Release image: ${IMAGE_URL}."
           git push origin "web-app/${VERSION}"
 
@@ -193,3 +193,10 @@ jobs:
             --latest="$IS_LATEST" \
             --verify-tag \
             $prerelease_flag
+
+  # FORK NOTE: upstream's deploy-docs job is deliberately omitted here.
+  # We run this workflow to publish images to our GCP Artifact Registry, not to
+  # publish upstream's documentation. The job would push a gh-pages branch to this
+  # fork on every release, which serves nothing because Pages is not enabled, and
+  # mkdocs.yml still points repo_url at finlabsuk.
+  # On an upstream sync that reintroduces it, drop it again rather than merging it in.
